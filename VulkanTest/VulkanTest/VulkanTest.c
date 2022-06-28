@@ -28,6 +28,7 @@ static uint32_t s_instanceExtensionCounts[MAX_VULKAN_LAYER_COUNT];
 static VkInstance s_instance = NULL;
 static VkDevice s_specDevice = NULL;
 static uint32_t s_specQueueFamilyIndex = 0;
+static VkPhysicalDeviceMemoryProperties s_memoryProperties = { 0 };
 
 static const char* const s_deviceTypes[] = {
     "Other",
@@ -761,7 +762,6 @@ static void SimpleComputeTest(void)
     VkCommandPool commandPool = NULL;
     VkCommandBuffer commandBuffers[1] = { NULL };
     uint32_t const commandBufferCount = (uint32_t)(sizeof(commandBuffers) / sizeof(commandBuffers[0]));
-    VkPhysicalDeviceMemoryProperties memoryProperties = { 0 };
 
     do
     {
@@ -772,7 +772,7 @@ static void SimpleComputeTest(void)
             break;
         }
 
-        result = InitializeDevice(VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT, &memoryProperties);
+        result = InitializeDevice(VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT, &s_memoryProperties);
         if (result != VK_SUCCESS)
         {
             puts("InitializeDevice failed!");
@@ -782,7 +782,7 @@ static void SimpleComputeTest(void)
         const uint32_t elemCount = 100 * 1024 * 1024;
         const VkDeviceSize bufferSize = elemCount * sizeof(int);
 
-        result = AllocateMemoryAndBuffers(s_specDevice, &memoryProperties, deviceMemories, deviceBuffers, bufferSize, s_specQueueFamilyIndex);
+        result = AllocateMemoryAndBuffers(s_specDevice, &s_memoryProperties, deviceMemories, deviceBuffers, bufferSize, s_specQueueFamilyIndex);
         if (result != VK_SUCCESS)
         {
             puts("AllocateMemoryAndBuffers failed!");
@@ -954,7 +954,6 @@ static void AdvancedComputeTest(void)
     VkCommandPool commandPool = NULL;
     VkCommandBuffer commandBuffers[1] = { NULL };
     uint32_t const commandBufferCount = (uint32_t)(sizeof(commandBuffers) / sizeof(commandBuffers[0]));
-    VkPhysicalDeviceMemoryProperties memoryProperties = { 0 };
 
     if (s_instance == NULL || s_specDevice == NULL) {
         return;
@@ -965,7 +964,7 @@ static void AdvancedComputeTest(void)
         const uint32_t elemCount = 1024;
         const VkDeviceSize bufferSize = elemCount * sizeof(int);
 
-        VkResult result = AllocateMemoryAndBuffers(s_specDevice, &memoryProperties, deviceMemories, deviceBuffers, bufferSize, s_specQueueFamilyIndex);
+        VkResult result = AllocateMemoryAndBuffers(s_specDevice, &s_memoryProperties, deviceMemories, deviceBuffers, bufferSize, s_specQueueFamilyIndex);
         if (result != VK_SUCCESS)
         {
             puts("AllocateMemoryAndBuffers failed!");
