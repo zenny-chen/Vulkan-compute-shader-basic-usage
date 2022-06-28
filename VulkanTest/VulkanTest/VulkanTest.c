@@ -600,7 +600,7 @@ static VkResult CreateComputePipelineSimple(VkDevice device, VkShaderModule comp
     return res;
 }
 
-static VkResult CreateComputePipelineAdvanced(VkDevice device, VkShaderModule computeShaderModule, int sharedMemorySize, VkPipeline* pComputePipeline,
+static VkResult CreateComputePipelineAdvanced(VkDevice device, VkShaderModule computeShaderModule, uint32_t sharedMemorySize, VkPipeline* pComputePipeline,
     VkPipelineLayout* pPipelineLayout, VkDescriptorSetLayout* pDescLayout)
 {
     const VkDescriptorSetLayoutBinding descriptorSetLayoutBindings[2] = {
