@@ -49,8 +49,9 @@ void main(void)
     if (lid == 0)
     {
         highp int sum = 0;
-        for (int i = 0; i < SHARED_MEM_SIZE; i++)
+        for (int i = 0; i < SHARED_MEM_SIZE; i++) {
             sum += share_buffer[i];
+        }
 
         sharedResult = sum;
     }
