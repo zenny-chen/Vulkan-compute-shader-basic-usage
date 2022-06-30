@@ -236,8 +236,9 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
     VkQueueFamilyProperties queueFamilyProperties[MAX_QUEUE_FAMILY_PROPERTY_COUNT];
 
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevices[deviceIndex], &queueFamilyPropertyCount, NULL);
-    if (queueFamilyPropertyCount > MAX_QUEUE_FAMILY_PROPERTY_COUNT)
+    if (queueFamilyPropertyCount > MAX_QUEUE_FAMILY_PROPERTY_COUNT) {
         queueFamilyPropertyCount = MAX_QUEUE_FAMILY_PROPERTY_COUNT;
+    }
 
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevices[deviceIndex], &queueFamilyPropertyCount, queueFamilyProperties);
 
