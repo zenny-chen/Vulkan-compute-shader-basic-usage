@@ -515,8 +515,9 @@ static VkResult CreateShaderModule(VkDevice device, const char *fileName, VkShad
     fseek(fp, 0, SEEK_SET);
 
     uint32_t* codeBuffer = malloc(fileLen);
-    if(codeBuffer != NULL)
+    if(codeBuffer != NULL) {
         fread(codeBuffer, 1, fileLen, fp);
+    }
     fclose(fp);
 
     const VkShaderModuleCreateInfo moduleCreateInfo = {
