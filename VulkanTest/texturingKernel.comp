@@ -1,0 +1,22 @@
+#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) buffer dst {
+    highp uvec4 dstBuffer[];
+};
+
+layout(set = 0, binding = 1) uniform highp usampler2D imageSampler;
+
+void main(void)
+{
+    const uint imageWidth = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+    const uint x = gl_GlobalInvocationID.x;
+    const uint y = gl_GlobalInvocationID.y;
+    const uint index = y * imageWidth + x;
+
+    const uvec4 pixel = textureLod(imageSampler, vec2(x, y), 0.0f);
+    dstBuffer[index] = uvec4(pixel.x / 2, pixel.y / 2, pixel.z / 2, pixel.w / 2);
+}
+
