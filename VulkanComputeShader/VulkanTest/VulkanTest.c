@@ -555,7 +555,9 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .queueFamilyIndexCount = 1,
-        .pQueueFamilyIndices = (uint32_t[]){ queueFamilyIndex }
+        .pQueueFamilyIndices = (uint32_t[]){ queueFamilyIndex },
+        // The Vulkan spec states: initialLayout must be VK_IMAGE_LAYOUT_UNDEFINED or VK_IMAGE_LAYOUT_PREINITIALIZED
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
     };
 
     VkResult status = vkCreateImage(device, &imageCreateInfo, NULL, outImages);
@@ -730,7 +732,7 @@ static void WriteBufferAndSync(VkCommandBuffer commandBuffer, uint32_t queueFami
 
 static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t queueFamilyIndex, VkImage dstImage, VkBuffer srcHostBuffer, size_t width, size_t height)
 {
-    // The following barrier operation only intends to transit the image layout from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL.
+    // The following barrier operation only intends to transit the image layout from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
     const VkImageMemoryBarrier transitionBarrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .pNext = NULL,
