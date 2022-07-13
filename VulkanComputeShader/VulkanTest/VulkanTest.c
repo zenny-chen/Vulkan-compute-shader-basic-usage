@@ -732,7 +732,7 @@ static void WriteBufferAndSync(VkCommandBuffer commandBuffer, uint32_t queueFami
 
 static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t queueFamilyIndex, VkImage dstImage, VkBuffer srcHostBuffer, size_t width, size_t height)
 {
-    // The following barrier operation only intends to transit the image layout from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    // The following barrier operation only intends to transit the image layout from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL.
     const VkImageMemoryBarrier transitionBarrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .pNext = NULL,
