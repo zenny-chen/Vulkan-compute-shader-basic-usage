@@ -19,7 +19,7 @@
 enum MY_CONSTANTS
 {
     MAX_VULKAN_LAYER_COUNT = 64,
-    MAX_VULKAN_GLOBAL_EXT_PROPS = 64,
+    MAX_VULKAN_GLOBAL_EXT_PROPS = 256,
     MAX_GPU_COUNT = 8,
     MAX_QUEUE_FAMILY_PROPERTY_COUNT = 8,
 
@@ -175,6 +175,89 @@ static VkResult InitializeInstance(void)
     return result;
 }
 
+static const struct
+{
+    VkShaderStageFlagBits flag;
+    const char* desc;
+} s_allSupportedShaderStages[] = {
+    { VK_SHADER_STAGE_VERTEX_BIT, "vertex shader stage" },
+    { VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, "tessellation control shader stage" },
+    { VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT, "tessellation evaluation shader stage" },
+    { VK_SHADER_STAGE_GEOMETRY_BIT, "geometry shader stage" },
+    { VK_SHADER_STAGE_FRAGMENT_BIT, "fragment shader stage" },
+    { VK_SHADER_STAGE_COMPUTE_BIT, "compute shader stage" },
+    { VK_SHADER_STAGE_RAYGEN_BIT_KHR, "raygen shader stage" },
+    { VK_SHADER_STAGE_ANY_HIT_BIT_KHR, "any hit shader stage" },
+    { VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, "closest hit shader stage" },
+    { VK_SHADER_STAGE_MISS_BIT_KHR, "miss shader stage" },
+    { VK_SHADER_STAGE_INTERSECTION_BIT_KHR, "intersection shader stage" },
+    { VK_SHADER_STAGE_CALLABLE_BIT_KHR, "callable shader stage" },
+    { VK_SHADER_STAGE_TASK_BIT_NV, "task shader stage" },
+    { VK_SHADER_STAGE_MESH_BIT_NV, "mesh shader stage" }
+};
+
+// strBuffer must be zeroed before calling this function.
+static void FetchSupportedShaderStages(VkShaderStageFlags flags, char strBuffer[512])
+{
+    const int stageCount = (int)(sizeof(s_allSupportedShaderStages) / sizeof(s_allSupportedShaderStages[0]));
+    for (int i = 0; i < stageCount; ++i)
+    {
+        if ((flags & s_allSupportedShaderStages[i].flag) != 0)
+        {
+            strcat(strBuffer, s_allSupportedShaderStages[i].desc);
+            strcat(strBuffer, ", ");
+        }
+    }
+    const size_t len = strlen(strBuffer);
+    if (len == 0) {
+        strcat(strBuffer, "none.");
+    }
+    else
+    {
+        strBuffer[len - 2] = '.';
+        strBuffer[len - 1] = '\0';
+    }
+}
+
+static const struct
+{
+    VkSubgroupFeatureFlagBits flag;
+    const char* desc;
+} s_supportedSubgroupOperations[] = {
+    { VK_SUBGROUP_FEATURE_BASIC_BIT, "basic" },
+    { VK_SUBGROUP_FEATURE_VOTE_BIT, "vote" },
+    { VK_SUBGROUP_FEATURE_ARITHMETIC_BIT, "arithmetic" },
+    { VK_SUBGROUP_FEATURE_BALLOT_BIT, "ballot" },
+    { VK_SUBGROUP_FEATURE_SHUFFLE_BIT, "shuffle" },
+    { VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT, "shuffle relative" },
+    { VK_SUBGROUP_FEATURE_CLUSTERED_BIT, "clustered" },
+    { VK_SUBGROUP_FEATURE_QUAD_BIT, "quad" },
+    { VK_SUBGROUP_FEATURE_PARTITIONED_BIT_NV, "partitioned" }
+};
+
+// strBuffer must be zeroed before calling this function.
+static void FetchSupportedSubgroupOperations(VkSubgroupFeatureFlagBits flags, char strBuffer[512])
+{
+    const int operationCount = (int)(sizeof(s_supportedSubgroupOperations) / sizeof(s_supportedSubgroupOperations[0]));
+    for (int i = 0; i < operationCount; ++i)
+    {
+        if ((flags & s_supportedSubgroupOperations[i].flag) != 0)
+        {
+            strcat(strBuffer, s_supportedSubgroupOperations[i].desc);
+            strcat(strBuffer, ", ");
+        }
+    }
+    const size_t len = strlen(strBuffer);
+    if (len == 0) {
+        strcat(strBuffer, "none.");
+    }
+    else
+    {
+        strBuffer[len - 2] = '.';
+        strBuffer[len - 1] = '\0';
+    }
+}
+
 static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemoryProperties* pMemoryProperties)
 {
     VkPhysicalDevice physicalDevices[MAX_GPU_COUNT] = { NULL };
@@ -232,16 +315,121 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
 
     printf("You have chosen device[%u]...\n", deviceIndex);
 
-    VkPhysicalDeviceSubgroupProperties subgroupProperties = {
-        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES
+    // Query Vulkan extensions the current selected physical device supports
+    uint32_t extPropCount = 0U;
+    res = vkEnumerateDeviceExtensionProperties(physicalDevices[deviceIndex], NULL, &extPropCount, NULL);
+    if (res != VK_SUCCESS)
+    {
+        printf("vkEnumerateDeviceExtensionProperties for count failed: %d\n", res);
+        return res;
+    }
+    printf("The current selected physical device supports %u Vulkan extensions!\n", extPropCount);
+    if (extPropCount > MAX_VULKAN_GLOBAL_EXT_PROPS) {
+        extPropCount = MAX_VULKAN_GLOBAL_EXT_PROPS;
+    }
+
+    VkExtensionProperties extProps[MAX_VULKAN_GLOBAL_EXT_PROPS];
+    res = vkEnumerateDeviceExtensionProperties(physicalDevices[deviceIndex], NULL, &extPropCount, extProps);
+    if (res != VK_SUCCESS)
+    {
+        printf("vkEnumerateDeviceExtensionProperties for content failed: %d\n", res);
+        return res;
+    }
+
+    bool supportSubgroupSizeControl = false;
+    bool supportCustomBorderColor = false;
+    for (uint32_t i = 0; i < extPropCount; ++i)
+    {
+        // Here, just determine whether VK_EXT_subgroup_size_control and/or VK_EXT_custom_border_color feature is supported.
+        if (strcmp(extProps[i].extensionName, VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME) == 0) {
+            puts("Current device supports `VK_EXT_subgroup_size_control` extension!");
+        }
+        if (strcmp(extProps[i].extensionName, VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME) == 0) {
+            puts("Current device supports `VK_EXT_custom_border_color` extension!");
+        }
+    }
+
+    // ==== The following is query the specific extension features in the feature chaining form ====
+
+    // VK_EXT_custom_border_color feature
+    VkPhysicalDeviceCustomBorderColorFeaturesEXT customBorderColorFeature = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT,
+        // This is the last node
+        .pNext = NULL
     };
+
+    // VK_EXT_subgroup_size_control feature
+    VkPhysicalDeviceSubgroupSizeControlFeaturesEXT subgroupSizeControlFeature = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_FEATURES_EXT,
+        // link to customBorderColorFeature node
+        .pNext = &customBorderColorFeature
+    };
+
+    // physical device feature 2
+    VkPhysicalDeviceFeatures2 features2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        // link to subgroupSizeControlFeature node
+        .pNext = &subgroupSizeControlFeature
+    };
+
+    // Query all above features
+    vkGetPhysicalDeviceFeatures2(physicalDevices[deviceIndex], &features2);
+
+    printf("Current device %s customBorderColors!\n", customBorderColorFeature.customBorderColors ? "supports" : "does not support");
+    printf("Current device %s customBorderColorWithoutFormat!\n", customBorderColorFeature.customBorderColorWithoutFormat ? "supports" : "does not support");
+    printf("Current device %s computeFullSubgroups\n", subgroupSizeControlFeature.computeFullSubgroups ? "supports" : "does not support");
+    printf("Current device %s subgroupSizeControl\n", subgroupSizeControlFeature.subgroupSizeControl ? "supports" : "does not support");
+
+    // ==== Query the current selected device properties corresponding the above features ====
+    // VK_EXT_custom_border_color properties
+    VkPhysicalDeviceCustomBorderColorPropertiesEXT customBorderProps = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_PROPERTIES_EXT,
+        // the last node
+        .pNext = NULL
+    };
+
+    // VK_EXT_subgroup_size_control properties
+    VkPhysicalDeviceSubgroupSizeControlPropertiesEXT subgroupSizeControlProps = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES_EXT,
+        // link to customBorderProps
+        .pNext = &customBorderProps
+    };
+
+    // SubgroupSize properties
+    VkPhysicalDeviceSubgroupProperties subgroupSizeProps = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES,
+        // link to subgroupSizeControlProps
+        .pNext = &subgroupSizeControlProps
+    };
+
     VkPhysicalDeviceProperties2 properties2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
-        .pNext = &subgroupProperties
+        // link to subgroupSizeProps
+        .pNext = &subgroupSizeProps
     };
-    vkGetPhysicalDeviceProperties2(physicalDevices[deviceIndex], &properties2);
-    printf("Current device subgroup size: %u\n", subgroupProperties.subgroupSize);
 
+    // Query all above properties
+    vkGetPhysicalDeviceProperties2(physicalDevices[deviceIndex], &properties2);
+
+    printf("Current device max custom border color samples: %u\n", customBorderProps.maxCustomBorderColorSamplers);
+
+    char strBuffer[512] = { '\0' };
+    FetchSupportedShaderStages(subgroupSizeControlProps.requiredSubgroupSizeStages, strBuffer);
+    printf("Current device max compute workgroup subgroups: %u, min subgroup size: %u, max subgroup size: %u, required subgroup size stages: %s\n",
+        subgroupSizeControlProps.maxComputeWorkgroupSubgroups, subgroupSizeControlProps.minSubgroupSize, subgroupSizeControlProps.maxSubgroupSize, strBuffer);
+
+    printf("subgroup size: %u, quad operations in all stages? %s.\n", subgroupSizeProps.subgroupSize,
+        subgroupSizeProps.quadOperationsInAllStages ? "YES" : "NO");
+    
+    strBuffer[0] = '\0';
+    FetchSupportedSubgroupOperations(subgroupSizeProps.supportedOperations, strBuffer);
+    printf("Current device supported subgroup operations: %s\n", strBuffer);
+
+    strBuffer[0] = '\0';
+    FetchSupportedShaderStages(subgroupSizeProps.supportedStages, strBuffer);
+    printf("Current device supported subgroup stages: %s\n", strBuffer);
+
+    // Get device memory properties
     vkGetPhysicalDeviceMemoryProperties(physicalDevices[deviceIndex], pMemoryProperties);
 
     const float queue_priorities[1] = { 0.0f };
@@ -275,15 +463,28 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
 
     s_specQueueFamilyIndex = queue_info.queueFamilyIndex;
 
+    uint32_t extCount = 0;
+    const char* extensionNames[2] = { NULL };
+    if (supportSubgroupSizeControl) {
+        extensionNames[extCount++] = VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME;
+    }
+    if (supportCustomBorderColor) {
+        extensionNames[extCount++] = VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME;
+    }
+    
+    // There are two ways to enable features:
+    // (1) Set pNext to a VkPhysicalDeviceFeatures2 structure and set pEnabledFeatures to NULL;
+    // (2) or set pNext to NULL and set pEnabledFeatures to a VkPhysicalDeviceFeatures structure.
+    // Here uses the first way
     const VkDeviceCreateInfo device_info = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = NULL,
+        .pNext = &features2,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &queue_info,
         .enabledLayerCount = 0,
         .ppEnabledLayerNames = NULL,
-        .enabledExtensionCount = 0,
-        .ppEnabledExtensionNames = NULL,
+        .enabledExtensionCount = extCount,
+        .ppEnabledExtensionNames = extensionNames,
         .pEnabledFeatures = NULL
     };
 
@@ -312,7 +513,7 @@ static VkResult InitializeCommandBuffer(uint32_t queueFamilyIndex, VkDevice devi
         return res;
     }
 
-    /* Create the command buffer from the command pool */
+    // Create the command buffer from the command pool
     const VkCommandBufferAllocateInfo cmdInfo = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .pNext = NULL,
