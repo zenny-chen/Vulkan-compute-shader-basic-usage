@@ -135,11 +135,9 @@ static VkResult InitializeInstance(void)
     }
 
     // Query the API version
-    uint32_t apiVersion = VK_API_VERSION_1_2;
+    uint32_t apiVersion = VK_API_VERSION_1_0;
     vkEnumerateInstanceVersion(&apiVersion);
-    // Zero the patch version
-    apiVersion &= ~0x0fffU;
-    printf("Current API version: %u.%u\n", (apiVersion >> 22) & 0x03ffU, (apiVersion >> 12) & 0x03ffU);
+    printf("Current API version: %u.%u.%u\n", VK_VERSION_MAJOR(apiVersion), VK_VERSION_MINOR(apiVersion), VK_VERSION_PATCH(apiVersion));
 
     // initialize the VkApplicationInfo structure
     const VkApplicationInfo app_info = {
@@ -294,9 +292,8 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
         printf("\n======== Device %u info ========\n", i);
         printf("Device name: %s\n", props.deviceName);
         printf("Device type: %s\n", s_deviceTypes[props.deviceType]);
-        printf("API version: %u.%u\n", (props.apiVersion >> 22) & 0x03ffU, (props.apiVersion >> 12) & 0x03ffU);
-        printf("Driver version: 0x%.8X\n", props.driverVersion);
-        puts("");
+        printf("Vulkan API version: %u.%u.%u\n", VK_VERSION_MAJOR(props.apiVersion), VK_VERSION_MINOR(props.apiVersion), VK_VERSION_PATCH(props.apiVersion));
+        printf("Driver version: %08X\n", props.driverVersion);
     }
     puts("Please choose which device to use...");
 
@@ -402,14 +399,22 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
         .pNext = &subgroupSizeControlProps
     };
 
+    VkPhysicalDeviceDriverProperties driverProps = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
+        // link to subgroupSizeProps node
+        .pNext = &subgroupSizeProps
+    };
+
     VkPhysicalDeviceProperties2 properties2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
-        // link to subgroupSizeProps
-        .pNext = &subgroupSizeProps
+        // link to driverProps
+        .pNext = &driverProps
     };
 
     // Query all above properties
     vkGetPhysicalDeviceProperties2(physicalDevices[deviceIndex], &properties2);
+
+    printf("Detail driver info: %s %s\n", driverProps.driverName, driverProps.driverInfo);
 
     printf("Current device max custom border color samples: %u\n", customBorderProps.maxCustomBorderColorSamplers);
 
@@ -1031,7 +1036,7 @@ static VkResult CreateShaderModule(VkDevice device, const char *fileName, VkShad
     fseek(fp, 0, SEEK_SET);
 
     uint32_t* codeBuffer = malloc(fileLen);
-    if(codeBuffer != NULL) {
+    if (codeBuffer != NULL) {
         fread(codeBuffer, 1, fileLen, fp);
     }
     fclose(fp);
