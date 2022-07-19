@@ -338,10 +338,14 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
     for (uint32_t i = 0; i < extPropCount; ++i)
     {
         // Here, just determine whether VK_EXT_subgroup_size_control and/or VK_EXT_custom_border_color feature is supported.
-        if (strcmp(extProps[i].extensionName, VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME) == 0) {
+        if (strcmp(extProps[i].extensionName, VK_EXT_SUBGROUP_SIZE_CONTROL_EXTENSION_NAME) == 0)
+        {
+            supportSubgroupSizeControl = true;
             puts("Current device supports `VK_EXT_subgroup_size_control` extension!");
         }
-        if (strcmp(extProps[i].extensionName, VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME) == 0) {
+        if (strcmp(extProps[i].extensionName, VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME) == 0)
+        {
+            supportCustomBorderColor = true;
             puts("Current device supports `VK_EXT_custom_border_color` extension!");
         }
     }
