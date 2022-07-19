@@ -1338,20 +1338,36 @@ static VkResult CreateDescriptorSets(VkDevice device, VkBuffer deviceBuffers[2],
         .range = VK_WHOLE_SIZE
     };
 
-    const VkWriteDescriptorSet writeDescSet = {
-        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .pNext = NULL,
-        .dstSet = *pDescSets,
-        .dstBinding = 0,
-        .dstArrayElement = 0,
-        .descriptorCount = 2,
-        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-        .pImageInfo = NULL,
-        .pBufferInfo = (VkDescriptorBufferInfo[]) { dstDescBufferInfo, srcDescBufferInfo },
-        .pTexelBufferView = NULL
+    const VkWriteDescriptorSet writeDescSet[] = {
+        // dstBuffer
+        {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .pNext = NULL,
+            .dstSet = *pDescSets,
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pImageInfo = NULL,
+            .pBufferInfo = (VkDescriptorBufferInfo[]) { dstDescBufferInfo },
+            .pTexelBufferView = NULL
+        },
+        // srcBuffer
+        {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .pNext = NULL,
+            .dstSet = *pDescSets,
+            .dstBinding = 1,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .pImageInfo = NULL,
+            .pBufferInfo = (VkDescriptorBufferInfo[]) { srcDescBufferInfo },
+            .pTexelBufferView = NULL
+        }
     };
 
-    vkUpdateDescriptorSets(device, 1, &writeDescSet, 0, NULL);
+    vkUpdateDescriptorSets(device, 2, writeDescSet, 0, NULL);
 
     return res;
 }
