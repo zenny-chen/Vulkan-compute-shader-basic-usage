@@ -28,6 +28,7 @@ enum MY_CONSTANTS
 };
 
 static VkLayerProperties s_layerProperties[MAX_VULKAN_LAYER_COUNT];
+static const char* s_layerNames[MAX_VULKAN_LAYER_COUNT];
 static VkExtensionProperties s_instanceExtensions[MAX_VULKAN_LAYER_COUNT][MAX_VULKAN_GLOBAL_EXT_PROPS];
 static uint32_t s_layerCount;
 static uint32_t s_instanceExtensionCounts[MAX_VULKAN_LAYER_COUNT];
@@ -51,6 +52,7 @@ static VkResult init_global_extension_properties(uint32_t layerIndex)
     VkResult res;
     VkLayerProperties* currLayer = &s_layerProperties[layerIndex];
     char const * const layer_name = currLayer->layerName;
+    s_layerNames[layerIndex] = layer_name;
 
     do {
         res = vkEnumerateInstanceExtensionProperties(layer_name, &instance_extension_count, NULL);
@@ -133,6 +135,7 @@ static VkResult InitializeInstance(void)
         printf("init_global_layer_properties failed: %d\n", result);
         return result;
     }
+    printf("Found %u layer(s)...\n", s_layerCount);
 
     // Query the API version
     uint32_t apiVersion = VK_API_VERSION_1_0;
@@ -158,8 +161,8 @@ static VkResult InitializeInstance(void)
         .pApplicationInfo = &app_info,
         .enabledExtensionCount = 0,
         .ppEnabledExtensionNames = NULL,
-        .enabledLayerCount = 0,
-        .ppEnabledLayerNames = NULL
+        .enabledLayerCount = 0, // s_layerCount,
+        .ppEnabledLayerNames = s_layerNames
     };
 
     result = vkCreateInstance(&inst_info, NULL, &s_instance);
@@ -480,7 +483,7 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
     if (supportCustomBorderColor) {
         extensionNames[extCount++] = VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME;
     }
-    
+
     // There are two ways to enable features:
     // (1) Set pNext to a VkPhysicalDeviceFeatures2 structure and set pEnabledFeatures to NULL;
     // (2) or set pNext to NULL and set pEnabledFeatures to a VkPhysicalDeviceFeatures structure.
