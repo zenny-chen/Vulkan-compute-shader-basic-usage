@@ -499,7 +499,7 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
         .ppEnabledExtensionNames = extensionNames,
         .pEnabledFeatures = NULL
     };
-
+    
     res = vkCreateDevice(physicalDevices[deviceIndex], &device_info, NULL, &s_specDevice);
     if (res != VK_SUCCESS) {
         printf("vkCreateDevice failed: %d\n", res);
@@ -568,6 +568,9 @@ static VkResult AllocateMemoryAndBuffers(VkDevice device, const VkPhysicalDevice
     // Find host visible property memory type index
     for (memoryTypeIndex = 0; memoryTypeIndex < pMemoryProperties->memoryTypeCount; memoryTypeIndex++)
     {
+        if ((hostMemBufRequirements.memoryTypeBits & (1U << memoryTypeIndex)) == 0U) {
+            continue;
+        }
         const VkMemoryType memoryType = pMemoryProperties->memoryTypes[memoryTypeIndex];
         if ((memoryType.propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0 &&
             (memoryType.propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0 &&
@@ -633,6 +636,9 @@ static VkResult AllocateMemoryAndBuffers(VkDevice device, const VkPhysicalDevice
     // Find device local property memory type index
     for (memoryTypeIndex = 0; memoryTypeIndex < pMemoryProperties->memoryTypeCount; memoryTypeIndex++)
     {
+        if ((deviceMemBufRequirements.memoryTypeBits & (1U << memoryTypeIndex)) == 0U) {
+            continue;
+        }
         const VkMemoryType memoryType = pMemoryProperties->memoryTypes[memoryTypeIndex];
         if ((memoryType.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0 &&
             pMemoryProperties->memoryHeaps[memoryType.heapIndex].size >= deviceMemTotalSize)
@@ -722,6 +728,9 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
     // Find host visible property memory type index
     for (memoryTypeIndex = 0; memoryTypeIndex < pMemoryProperties->memoryTypeCount; memoryTypeIndex++)
     {
+        if ((hostMemBufRequirements.memoryTypeBits & (1U << memoryTypeIndex)) == 0U) {
+            continue;
+        }
         const VkMemoryType memoryType = pMemoryProperties->memoryTypes[memoryTypeIndex];
         if ((memoryType.propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0 &&
             (memoryType.propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0 &&
@@ -804,6 +813,9 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
     // Find device local property memory type index
     for (memoryTypeIndex = 0; memoryTypeIndex < pMemoryProperties->memoryTypeCount; memoryTypeIndex++)
     {
+        if ((imageMemBufRequirements.memoryTypeBits & (1U << memoryTypeIndex)) == 0U) {
+            continue;
+        }
         const VkMemoryType memoryType = pMemoryProperties->memoryTypes[memoryTypeIndex];
         if ((memoryType.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0 &&
             pMemoryProperties->memoryHeaps[memoryType.heapIndex].size >= imageMemBufRequirements.size * 2)
