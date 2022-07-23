@@ -19,6 +19,7 @@
 layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
 
 // shared threadgroup memory size must be larger than zero.
+// This constant will be specialized when creating the compute pipeline.
 layout(constant_id = 0) const int SHARED_MEM_SIZE = 128;
 
 layout(push_constant) uniform pushConstants{

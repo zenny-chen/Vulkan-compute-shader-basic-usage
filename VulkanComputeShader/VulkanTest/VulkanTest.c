@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <vulkan/vulkan.h>
 
 #ifdef _WIN32
@@ -271,7 +272,7 @@ static void FetchSupportedSubgroupOperations(VkSubgroupFeatureFlagBits flags, ch
 
 static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemoryProperties* pMemoryProperties)
 {
-    VkPhysicalDevice physicalDevices[MAX_GPU_COUNT] = { NULL };
+    VkPhysicalDevice physicalDevices[MAX_GPU_COUNT] = { VK_NULL_HANDLE };
     uint32_t gpu_count = 0;
     VkResult res = vkEnumeratePhysicalDevices(s_instance, &gpu_count, NULL);
     if (res != VK_SUCCESS)
@@ -310,12 +311,26 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
     }
     puts("Please choose which device to use...");
 
+#ifdef _WIN32
     char inputBuffer[8] = { '\0' };
     const char* input = gets_s(inputBuffer, sizeof(inputBuffer));
     if (input == NULL) {
         input = "0";
     }
-    const unsigned deviceIndex = atoi(input);
+    const uint32_t deviceIndex = atoi(input);
+#else
+    char* input = NULL;
+    ssize_t initLen = 0;
+    const ssize_t len = getline(&input, &initLen, stdin);
+    input[len - 1] = '\0';
+    errno = 0;
+    const uint32_t deviceIndex = (uint32_t)strtoul(input, NULL, 10);
+    if (errno != 0)
+    {
+        printf("Input error: %d! Invalid integer input!!\n", errno);
+        return VK_ERROR_DEVICE_LOST;
+    }
+#endif // WIN32
 
     if (deviceIndex >= gpu_count)
     {
@@ -1249,7 +1264,7 @@ static VkResult CreateComputePipelineSimple(VkDevice device, VkShaderModule comp
         .flags = 0,
         .stage = shaderStageCreateInfo,
         .layout = *pPipelineLayout,
-        .basePipelineHandle = NULL,
+        .basePipelineHandle = VK_NULL_HANDLE,
         .basePipelineIndex = 0
     };
     res = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, NULL, pComputePipeline);
@@ -1332,7 +1347,7 @@ static VkResult CreateComputePipelineAdvanced(VkDevice device, VkShaderModule co
         .flags = 0,
         .stage = shaderStageCreateInfo,
         .layout = *pPipelineLayout,
-        .basePipelineHandle = NULL,
+        .basePipelineHandle = VK_NULL_HANDLE,
         .basePipelineIndex = 0
     };
     res = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, NULL, pComputePipeline);
@@ -1419,7 +1434,7 @@ static VkResult CreateComputePipelineTexturing(VkDevice device, VkShaderModule c
         .flags = 0,
         .stage = shaderStageCreateInfo,
         .layout = *pPipelineLayout,
-        .basePipelineHandle = NULL,
+        .basePipelineHandle = VK_NULL_HANDLE,
         .basePipelineIndex = 0
     };
     res = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, NULL, pComputePipeline);
@@ -1630,10 +1645,10 @@ static VkResult InitializeInstanceAndeDevice(void)
 
 static void DestroyInstanceAndDevice(void)
 {
-    if (s_specDevice != NULL) {
+    if (s_specDevice != VK_NULL_HANDLE) {
         vkDestroyDevice(s_specDevice, NULL);
     }
-    if (s_instance != NULL) {
+    if (s_instance != VK_NULL_HANDLE) {
         vkDestroyInstance(s_instance, NULL);
     }
 }
@@ -1642,16 +1657,16 @@ static void SimpleComputeTest(void)
 {
     puts("\n================ Begin simple compute test ================\n");
 
-    VkDeviceMemory deviceMemories[2] = { NULL };
+    VkDeviceMemory deviceMemories[2] = { VK_NULL_HANDLE };
     // deviceBuffers[0] as host temporal buffer, deviceBuffers[1] as device dst buffer, deviceBuffers[2] as device src buffer
-    VkBuffer deviceBuffers[3] = { NULL };
-    VkShaderModule computeShaderModule = NULL;
-    VkPipeline computePipeline = NULL;
-    VkDescriptorSetLayout descriptorSetLayout = NULL;
-    VkPipelineLayout pipelineLayout = NULL;
-    VkDescriptorPool descriptorPool = NULL;
-    VkCommandPool commandPool = NULL;
-    VkCommandBuffer commandBuffers[1] = { NULL };
+    VkBuffer deviceBuffers[3] = { VK_NULL_HANDLE };
+    VkShaderModule computeShaderModule = VK_NULL_HANDLE;
+    VkPipeline computePipeline = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    VkCommandBuffer commandBuffers[1] = { VK_NULL_HANDLE };
     uint32_t const commandBufferCount = (uint32_t)(sizeof(commandBuffers) / sizeof(commandBuffers[0]));
 
     do
@@ -1682,7 +1697,7 @@ static void SimpleComputeTest(void)
 
         // There's no need to destroy `descriptorSet`, since VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag is not set
         // in `flags` in `VkDescriptorPoolCreateInfo`
-        VkDescriptorSet descriptorSet = NULL;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
         result = CreateDescriptorSets(s_specDevice, &deviceBuffers[1], descriptorSetLayout, &descriptorPool, &descriptorSet);
         if (result != VK_SUCCESS)
         {
@@ -1697,7 +1712,7 @@ static void SimpleComputeTest(void)
             break;
         }
 
-        VkQueue queue = NULL;
+        VkQueue queue = VK_NULL_HANDLE;
         vkGetDeviceQueue(s_specDevice, s_specQueueFamilyIndex, 0, &queue);
 
         const VkCommandBufferBeginInfo cmdBufBeginInfo = {
@@ -1779,36 +1794,36 @@ static void SimpleComputeTest(void)
 
     } while (false);
 
-    if (commandPool != NULL)
+    if (commandPool != VK_NULL_HANDLE)
     {
         vkFreeCommandBuffers(s_specDevice, commandPool, commandBufferCount, commandBuffers);
         vkDestroyCommandPool(s_specDevice, commandPool, NULL);
     }
-    if (descriptorPool != NULL) {
+    if (descriptorPool != VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(s_specDevice, descriptorPool, NULL);
     }
-    if (descriptorSetLayout != NULL) {
+    if (descriptorSetLayout != VK_NULL_HANDLE) {
         vkDestroyDescriptorSetLayout(s_specDevice, descriptorSetLayout, NULL);
     }
-    if (pipelineLayout != NULL) {
+    if (pipelineLayout != VK_NULL_HANDLE) {
         vkDestroyPipelineLayout(s_specDevice, pipelineLayout, NULL);
     }
-    if (computePipeline != NULL) {
+    if (computePipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(s_specDevice, computePipeline, NULL);
     }
-    if (computeShaderModule != NULL) {
+    if (computeShaderModule != VK_NULL_HANDLE) {
         vkDestroyShaderModule(s_specDevice, computeShaderModule, NULL);
     }
 
     for (size_t i = 0; i < sizeof(deviceBuffers) / sizeof(deviceBuffers[0]); i++)
     {
-        if (deviceBuffers[i] != NULL) {
+        if (deviceBuffers[i] != VK_NULL_HANDLE) {
             vkDestroyBuffer(s_specDevice, deviceBuffers[i], NULL);
         }
     }
     for (size_t i = 0; i < sizeof(deviceMemories) / sizeof(deviceMemories[0]); i++)
     {
-        if (deviceMemories[i] != NULL) {
+        if (deviceMemories[i] != VK_NULL_HANDLE) {
             vkFreeMemory(s_specDevice, deviceMemories[i], NULL);
         }
     }
@@ -1820,19 +1835,19 @@ static void AdvancedComputeTest(void)
 {
     puts("================ Begin advanced compute test ================\n");
 
-    VkDeviceMemory deviceMemories[2] = { NULL };
+    VkDeviceMemory deviceMemories[2] = { VK_NULL_HANDLE };
     // deviceBuffers[0] as host temporal buffer, deviceBuffers[1] as device dst buffer, deviceBuffers[2] as device src buffer
-    VkBuffer deviceBuffers[3] = { NULL };
-    VkShaderModule computeShaderModule = NULL;
-    VkPipeline computePipeline = NULL;
-    VkDescriptorSetLayout descriptorSetLayout = NULL;
-    VkPipelineLayout pipelineLayout = NULL;
-    VkDescriptorPool descriptorPool = NULL;
-    VkCommandPool commandPool = NULL;
-    VkCommandBuffer commandBuffers[1] = { NULL };
+    VkBuffer deviceBuffers[3] = { VK_NULL_HANDLE };
+    VkShaderModule computeShaderModule = VK_NULL_HANDLE;
+    VkPipeline computePipeline = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    VkCommandBuffer commandBuffers[1] = { VK_NULL_HANDLE };
     uint32_t const commandBufferCount = (uint32_t)(sizeof(commandBuffers) / sizeof(commandBuffers[0]));
 
-    if (s_instance == NULL || s_specDevice == NULL) {
+    if (s_instance == VK_NULL_HANDLE || s_specDevice == VK_NULL_HANDLE) {
         return;
     }
 
@@ -1864,7 +1879,7 @@ static void AdvancedComputeTest(void)
 
         // There's no need to destroy `descriptorSet`, since VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag is not set
         // in `flags` in `VkDescriptorPoolCreateInfo`
-        VkDescriptorSet descriptorSet = NULL;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
         result = CreateDescriptorSets(s_specDevice, &deviceBuffers[1], descriptorSetLayout, &descriptorPool, &descriptorSet);
         if (result != VK_SUCCESS)
         {
@@ -1879,7 +1894,7 @@ static void AdvancedComputeTest(void)
             break;
         }
 
-        VkQueue queue = NULL;
+        VkQueue queue = VK_NULL_HANDLE;
         vkGetDeviceQueue(s_specDevice, s_specQueueFamilyIndex, 0, &queue);
 
         const VkCommandBufferBeginInfo cmdBufBeginInfo = {
@@ -1970,36 +1985,36 @@ static void AdvancedComputeTest(void)
 
     } while (false);
 
-    if (commandPool != NULL)
+    if (commandPool != VK_NULL_HANDLE)
     {
         vkFreeCommandBuffers(s_specDevice, commandPool, commandBufferCount, commandBuffers);
         vkDestroyCommandPool(s_specDevice, commandPool, NULL);
     }
-    if (descriptorPool != NULL) {
+    if (descriptorPool != VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(s_specDevice, descriptorPool, NULL);
     }
-    if (descriptorSetLayout != NULL) {
+    if (descriptorSetLayout != VK_NULL_HANDLE) {
         vkDestroyDescriptorSetLayout(s_specDevice, descriptorSetLayout, NULL);
     }
-    if (pipelineLayout != NULL) {
+    if (pipelineLayout != VK_NULL_HANDLE) {
         vkDestroyPipelineLayout(s_specDevice, pipelineLayout, NULL);
     }
-    if (computePipeline != NULL) {
+    if (computePipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(s_specDevice, computePipeline, NULL);
     }
-    if (computeShaderModule != NULL) {
+    if (computeShaderModule != VK_NULL_HANDLE) {
         vkDestroyShaderModule(s_specDevice, computeShaderModule, NULL);
     }
 
     for (size_t i = 0; i < sizeof(deviceBuffers) / sizeof(deviceBuffers[0]); i++)
     {
-        if (deviceBuffers[i] != NULL) {
+        if (deviceBuffers[i] != VK_NULL_HANDLE) {
             vkDestroyBuffer(s_specDevice, deviceBuffers[i], NULL);
         }
     }
     for (size_t i = 0; i < sizeof(deviceMemories) / sizeof(deviceMemories[0]); i++)
     {
-        if (deviceMemories[i] != NULL) {
+        if (deviceMemories[i] != VK_NULL_HANDLE) {
             vkFreeMemory(s_specDevice, deviceMemories[i], NULL);
         }
     }
@@ -2052,7 +2067,7 @@ static void TexturingComputeTest(void)
 
         // There's no need to destroy `descriptorSet`, since VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag is not set
         // in `flags` in `VkDescriptorPoolCreateInfo`
-        VkDescriptorSet descriptorSet = NULL;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
         result = CreateDescriptorSetsForTexturing(s_specDevice, deviceBuffers[1], imageViews, samplers[0], 
                                         descriptorSetLayout, &descriptorPool, &descriptorSet);
         if (result != VK_SUCCESS)
@@ -2068,7 +2083,7 @@ static void TexturingComputeTest(void)
             break;
         }
 
-        VkQueue queue = NULL;
+        VkQueue queue = VK_NULL_HANDLE;
         vkGetDeviceQueue(s_specDevice, s_specQueueFamilyIndex, 0, &queue);
 
         const VkCommandBufferBeginInfo cmdBufBeginInfo = {
@@ -2177,54 +2192,54 @@ static void TexturingComputeTest(void)
 
     } while (false);
 
-    if (commandPool != NULL)
+    if (commandPool != VK_NULL_HANDLE)
     {
         vkFreeCommandBuffers(s_specDevice, commandPool, commandBufferCount, commandBuffers);
         vkDestroyCommandPool(s_specDevice, commandPool, NULL);
     }
-    if (descriptorPool != NULL) {
+    if (descriptorPool != VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(s_specDevice, descriptorPool, NULL);
     }
-    if (descriptorSetLayout != NULL) {
+    if (descriptorSetLayout != VK_NULL_HANDLE) {
         vkDestroyDescriptorSetLayout(s_specDevice, descriptorSetLayout, NULL);
     }
-    if (pipelineLayout != NULL) {
+    if (pipelineLayout != VK_NULL_HANDLE) {
         vkDestroyPipelineLayout(s_specDevice, pipelineLayout, NULL);
     }
-    if (computePipeline != NULL) {
+    if (computePipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(s_specDevice, computePipeline, NULL);
     }
-    if (computeShaderModule != NULL) {
+    if (computeShaderModule != VK_NULL_HANDLE) {
         vkDestroyShaderModule(s_specDevice, computeShaderModule, NULL);
     }
 
     for (size_t i = 0; i < sizeof(deviceBuffers) / sizeof(deviceBuffers[0]); i++)
     {
-        if (deviceBuffers[i] != NULL) {
+        if (deviceBuffers[i] != VK_NULL_HANDLE) {
             vkDestroyBuffer(s_specDevice, deviceBuffers[i], NULL);
         }
     }
     for (size_t i = 0; i < sizeof(images) / sizeof(images[0]); i++)
     {
-        if (images[i] != NULL) {
+        if (images[i] != VK_NULL_HANDLE) {
             vkDestroyImage(s_specDevice, images[i], NULL);
         }
     }
     for (size_t i = 0; i < sizeof(imageViews) / sizeof(imageViews[0]); i++)
     {
-        if (imageViews[i] != NULL) {
+        if (imageViews[i] != VK_NULL_HANDLE) {
             vkDestroyImageView(s_specDevice, imageViews[i], NULL);
         }
     }
     for (size_t i = 0; i < sizeof(samplers) / sizeof(samplers[0]); i++)
     {
-        if (samplers[i] != NULL) {
+        if (samplers[i] != VK_NULL_HANDLE) {
             vkDestroySampler(s_specDevice, samplers[i], NULL);
         }
     }
     for (size_t i = 0; i < sizeof(deviceMemories) / sizeof(deviceMemories[0]); i++)
     {
-        if (deviceMemories[i] != NULL) {
+        if (deviceMemories[i] != VK_NULL_HANDLE) {
             vkFreeMemory(s_specDevice, deviceMemories[i], NULL);
         }
     }
