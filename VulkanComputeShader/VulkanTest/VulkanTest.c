@@ -722,11 +722,11 @@ static VkResult AllocateMemoryAndBuffers(VkDevice device, const VkPhysicalDevice
 }
 
 // deviceMemories[0] as host visible memory, deviceMemories[1] as device local memory
-// deviceBuffers[0] as host temporal buffer, deviceBuffers[1] as device dst buffer
+// deviceBuffers[0] as host temporal buffer, deviceBuffers[1] and outBufferViews[0] as dstStorageImageBuffer
 // outImages[0] and outImageViews[0] as sampled image
-// outImages[1] and outImageViews[1] as storage image
+// outImages[1] and outImageViews[1] as storageImage
 static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const VkPhysicalDeviceMemoryProperties* pMemoryProperties, VkDeviceMemory deviceMemories[2],
-    VkBuffer deviceBuffers[2], uint32_t width, uint32_t height, uint32_t queueFamilyIndex, VkImage outImages[2], VkImageView outImageViews[2], VkSampler outSamplers[1])
+    VkBuffer deviceBuffers[2], uint32_t width, uint32_t height, uint32_t queueFamilyIndex, VkImage outImages[2], VkBufferView outBufferViews[1], VkImageView outImageViews[2], VkSampler outSamplers[1])
 {
     const size_t imageBufferSize = width * height * sizeof(uint32_t) * 4;   // each pixel element is a uvec4
 
@@ -816,6 +816,10 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         return status;
     }
 
+    VkMemoryRequirements imageMemBufRequirements = { 0 };
+    vkGetImageMemoryRequirements(device, outImages[0], &imageMemBufRequirements);
+    const size_t totoalDeviceMemSize = imageMemBufRequirements.size * 2 + imageMemBufRequirements.size / 4;
+
     const VkImageCreateInfo imageCreateInfoStorage = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .pNext = NULL,
@@ -842,22 +846,18 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         return status;
     }
 
-    VkMemoryRequirements imageMemBufRequirements = { 0 };
-    vkGetImageMemoryRequirements(device, outImages[0], &imageMemBufRequirements);
-    const size_t totoalDeviceMemSize = imageMemBufRequirements.size * 2 + imageMemBufRequirements.size / 4;
-
-    const VkBufferCreateInfo deviceBufCreateInfo = {
+    const VkBufferCreateInfo texelBufCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .pNext = NULL,
         .flags = 0,
         .size = imageMemBufRequirements.size,
-        .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        .usage = VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .queueFamilyIndexCount = 1,
         .pQueueFamilyIndices = (uint32_t[]){ queueFamilyIndex }
     };
 
-    res = vkCreateBuffer(device, &deviceBufCreateInfo, NULL, &deviceBuffers[1]);
+    res = vkCreateBuffer(device, &texelBufCreateInfo, NULL, &deviceBuffers[1]);
     if (res != VK_SUCCESS)
     {
         printf("vkCreateBuffer failed: %d\n", res);
@@ -913,6 +913,23 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
     {
         printf("vkBindImageMemory failed: %d\n", res);
         return res;
+    }
+
+    const VkBufferViewCreateInfo bufferViewCreateInfo = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .buffer = deviceBuffers[1],
+        .format = VK_FORMAT_R32G32B32A32_UINT,
+        .offset = 0,
+        .range = VK_WHOLE_SIZE
+    };
+
+    status = vkCreateBufferView(device, &bufferViewCreateInfo, NULL, outBufferViews);
+    if (status != VK_SUCCESS)
+    {
+        printf("vkCreateBufferView failed: %d\n", status);
+        return status;
     }
 
     const VkImageViewCreateInfo imageViewCreateInfoSampled = {
@@ -1362,10 +1379,10 @@ static VkResult CreateComputePipelineTexturing(VkDevice device, VkShaderModule c
     VkPipelineLayout* pPipelineLayout, VkDescriptorSetLayout * pDescLayout)
 {
     const VkDescriptorSetLayoutBinding descriptorSetLayoutBindings[] = {
-        // buffer
+        // texel buffer
         {
             .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
             .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
             .pImmutableSamplers = NULL
@@ -1525,7 +1542,7 @@ static VkResult CreateDescriptorSets(VkDevice device, VkBuffer deviceBuffers[2],
     return res;
 }
 
-static VkResult CreateDescriptorSetsForTexturing(VkDevice device, VkBuffer dstBuffer, VkImageView srcImageViews[2], VkSampler sampler,
+static VkResult CreateDescriptorSetsForTexturing(VkDevice device, VkBuffer dstBuffer, VkBufferView dstBufferView, VkImageView srcImageViews[2], VkSampler sampler,
     VkDescriptorSetLayout descLayout, VkDescriptorPool* pDescriptorPool, VkDescriptorSet* pDescSets)
 {
     const VkDescriptorPoolCreateInfo descriptorPoolInfo = {
@@ -1535,7 +1552,7 @@ static VkResult CreateDescriptorSetsForTexturing(VkDevice device, VkBuffer dstBu
         .maxSets = 2,
         .poolSizeCount = 3,
         .pPoolSizes = (VkDescriptorPoolSize[]) {
-            {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount = 1},
+            {.type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, .descriptorCount = 1},
             {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 1},
             {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = 1}
         }
@@ -1588,10 +1605,10 @@ static VkResult CreateDescriptorSetsForTexturing(VkDevice device, VkBuffer dstBu
             .dstBinding = 0,
             .dstArrayElement = 0,
             .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
             .pImageInfo = NULL,
             .pBufferInfo = &dstDescBufferInfo,
-            .pTexelBufferView = NULL
+            .pTexelBufferView = (VkBufferView[]){ dstBufferView }
         },
         // sampled srcImageView write descriptor set
         {
@@ -2029,6 +2046,7 @@ static void TexturingComputeTest(void)
     VkDeviceMemory deviceMemories[2] = { VK_NULL_HANDLE };
     // deviceBuffers[0] as host temporal buffer, deviceBuffers[1] as device dst buffer
     VkBuffer deviceBuffers[2] = { VK_NULL_HANDLE };
+    VkBufferView texelBufferViews[1] = { VK_NULL_HANDLE };
     VkImage images[2] = { VK_NULL_HANDLE };
     VkImageView imageViews[2] = { VK_NULL_HANDLE };
     VkSampler samplers[1] = { VK_NULL_HANDLE };
@@ -2044,7 +2062,7 @@ static void TexturingComputeTest(void)
     do
     {
         VkResult result = AllocateMemoryAndCreateImageWithSampler(s_specDevice, &s_memoryProperties, deviceMemories, deviceBuffers,
-            TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT, s_specQueueFamilyIndex, images, imageViews, samplers);
+            TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT, s_specQueueFamilyIndex, images, texelBufferViews, imageViews, samplers);
         if (result != VK_SUCCESS)
         {
             puts("AllocateMemoryAndBuffers failed!");
@@ -2068,7 +2086,7 @@ static void TexturingComputeTest(void)
         // There's no need to destroy `descriptorSet`, since VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag is not set
         // in `flags` in `VkDescriptorPoolCreateInfo`
         VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-        result = CreateDescriptorSetsForTexturing(s_specDevice, deviceBuffers[1], imageViews, samplers[0], 
+        result = CreateDescriptorSetsForTexturing(s_specDevice, deviceBuffers[1], texelBufferViews[0], imageViews, samplers[0],
                                         descriptorSetLayout, &descriptorPool, &descriptorSet);
         if (result != VK_SUCCESS)
         {
@@ -2223,6 +2241,12 @@ static void TexturingComputeTest(void)
     {
         if (images[i] != VK_NULL_HANDLE) {
             vkDestroyImage(s_specDevice, images[i], NULL);
+        }
+    }
+    for (size_t i = 0; i < sizeof(texelBufferViews) / sizeof(texelBufferViews[0]); ++i)
+    {
+        if (texelBufferViews[i] != VK_NULL_HANDLE) {
+            vkDestroyBufferView(s_specDevice, texelBufferViews[i], NULL);
         }
     }
     for (size_t i = 0; i < sizeof(imageViews) / sizeof(imageViews[0]); i++)
