@@ -33,8 +33,8 @@ static VkExtensionProperties s_instanceExtensions[MAX_VULKAN_LAYER_COUNT][MAX_VU
 static uint32_t s_layerCount;
 static uint32_t s_instanceExtensionCounts[MAX_VULKAN_LAYER_COUNT];
 
-static VkInstance s_instance = NULL;
-static VkDevice s_specDevice = NULL;
+static VkInstance s_instance = VK_NULL_HANDLE;
+static VkDevice s_specDevice = VK_NULL_HANDLE;
 static uint32_t s_specQueueFamilyIndex = 0;
 static VkPhysicalDeviceMemoryProperties s_memoryProperties = { 0 };
 
@@ -136,6 +136,16 @@ static VkResult InitializeInstance(void)
         return result;
     }
     printf("Found %u layer(s)...\n", s_layerCount);
+
+    // Check whether a validation layer exists
+    for (uint32_t i = 0; i < s_layerCount; ++i)
+    {
+        if (strstr(s_layerNames[i], "validation") != NULL)
+        {
+            printf("Contains %s!\n", s_layerNames[i]);
+            break;
+        }
+    }
 
     // Query the API version
     uint32_t apiVersion = VK_API_VERSION_1_0;
@@ -698,8 +708,10 @@ static VkResult AllocateMemoryAndBuffers(VkDevice device, const VkPhysicalDevice
 
 // deviceMemories[0] as host visible memory, deviceMemories[1] as device local memory
 // deviceBuffers[0] as host temporal buffer, deviceBuffers[1] as device dst buffer
+// outImages[0] and outImageViews[0] as sampled image
+// outImages[1] and outImageViews[1] as storage image
 static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const VkPhysicalDeviceMemoryProperties* pMemoryProperties, VkDeviceMemory deviceMemories[2],
-    VkBuffer deviceBuffers[2], size_t width, size_t height, uint32_t queueFamilyIndex, VkImage outImages[1], VkImageView outImageViews[1], VkSampler outSamplers[1])
+    VkBuffer deviceBuffers[2], uint32_t width, uint32_t height, uint32_t queueFamilyIndex, VkImage outImages[2], VkImageView outImageViews[2], VkSampler outSamplers[1])
 {
     const size_t imageBufferSize = width * height * sizeof(uint32_t) * 4;   // each pixel element is a uvec4
 
@@ -763,13 +775,13 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         return res;
     }
 
-    const VkImageCreateInfo imageCreateInfo = {
+    const VkImageCreateInfo imageCreateInfoSampled = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .pNext = NULL,
         .flags = 0,
         .imageType = VK_IMAGE_TYPE_2D,
         .format = VK_FORMAT_R32G32B32A32_UINT,
-        .extent = { 1024U, 1024U, 1U },
+        .extent = { width, height, 1U },
         .mipLevels = 1U,
         .arrayLayers = 1U,
         .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -782,15 +794,42 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
     };
 
-    VkResult status = vkCreateImage(device, &imageCreateInfo, NULL, outImages);
+    VkResult status = vkCreateImage(device, &imageCreateInfoSampled, NULL, &outImages[0]);
     if (status != VK_SUCCESS)
     {
-        printf("vkCreateImage failed: %d\n", status);
+        printf("vkCreateImage for sampled image failed: %d\n", status);
+        return status;
+    }
+
+    const VkImageCreateInfo imageCreateInfoStorage = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = VK_FORMAT_R8G8B8A8_UINT,
+        .extent = { width, height, 1U },
+        .mipLevels = 1U,
+        .arrayLayers = 1U,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 1,
+        .pQueueFamilyIndices = (uint32_t[]){ queueFamilyIndex },
+        // The Vulkan spec states: initialLayout must be VK_IMAGE_LAYOUT_UNDEFINED or VK_IMAGE_LAYOUT_PREINITIALIZED
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+    };
+
+    status = vkCreateImage(device, &imageCreateInfoStorage, NULL, &outImages[1]);
+    if (status != VK_SUCCESS)
+    {
+        printf("vkCreateImage for storage image failed: %d\n", status);
         return status;
     }
 
     VkMemoryRequirements imageMemBufRequirements = { 0 };
     vkGetImageMemoryRequirements(device, outImages[0], &imageMemBufRequirements);
+    const size_t totoalDeviceMemSize = imageMemBufRequirements.size * 2 + imageMemBufRequirements.size / 4;
 
     const VkBufferCreateInfo deviceBufCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -818,7 +857,7 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         }
         const VkMemoryType memoryType = pMemoryProperties->memoryTypes[memoryTypeIndex];
         if ((memoryType.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0 &&
-            pMemoryProperties->memoryHeaps[memoryType.heapIndex].size >= imageMemBufRequirements.size * 2)
+            pMemoryProperties->memoryHeaps[memoryType.heapIndex].size >= totoalDeviceMemSize)
         {
             // found our memory type!
             printf("Device local VRAM size: %zuMB\n", pMemoryProperties->memoryHeaps[memoryType.heapIndex].size / (1024U * 1024U));
@@ -829,7 +868,7 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
     const VkMemoryAllocateInfo deviceMemAllocInfo = {
         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .pNext = NULL,
-        .allocationSize = imageMemBufRequirements.size * 2, // one memory buffer and one image buffer share the same device local memory.
+        .allocationSize = totoalDeviceMemSize, // one memory buffer and one image buffer share the same device local memory.
         .memoryTypeIndex = memoryTypeIndex
     };
 
@@ -854,7 +893,14 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         return res;
     }
 
-    const VkImageViewCreateInfo imageViewCreateInfo = {
+    res = vkBindImageMemory(device, outImages[1], deviceMemories[1], imageMemBufRequirements.size * 2);
+    if (res != VK_SUCCESS)
+    {
+        printf("vkBindImageMemory failed: %d\n", res);
+        return res;
+    }
+
+    const VkImageViewCreateInfo imageViewCreateInfoSampled = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .pNext = NULL,
         .flags = 0,
@@ -876,10 +922,39 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         }
     };
 
-    status = vkCreateImageView(device, &imageViewCreateInfo, NULL, outImageViews);
+    status = vkCreateImageView(device, &imageViewCreateInfoSampled, NULL, &outImageViews[0]);
     if (status != VK_SUCCESS)
     {
-        printf("vkCreateImageView failed: %d\n", status);
+        printf("vkCreateImageView for sampled image failed: %d\n", status);
+        return status;
+    }
+
+    const VkImageViewCreateInfo imageViewCreateInfoStorage = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0,
+        .image = outImages[1],
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = VK_FORMAT_R8G8B8A8_UINT,
+        .components = {
+            .r = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .g = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .b = VK_COMPONENT_SWIZZLE_IDENTITY,
+            .a = VK_COMPONENT_SWIZZLE_IDENTITY
+        },
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0U,
+            .levelCount = 1U,
+            .baseArrayLayer = 0U,
+            .layerCount = 1U
+        }
+    };
+
+    status = vkCreateImageView(device, &imageViewCreateInfoStorage, NULL, &outImageViews[1]);
+    if (status != VK_SUCCESS)
+    {
+        printf("vkCreateImageView for storage image failed: %d\n", status);
         return status;
     }
 
@@ -955,10 +1030,10 @@ static void WriteBufferAndSync(VkCommandBuffer commandBuffer, uint32_t queueFami
         0, NULL, 1, &bufferBarrier, 0, NULL);
 }
 
-static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t queueFamilyIndex, VkImage dstImage, VkBuffer srcHostBuffer, size_t width, size_t height)
+static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t queueFamilyIndex, VkImage dstImages[2], VkBuffer srcHostBuffer, size_t width, size_t height)
 {
     // The following barrier operation only intends to transit the image layout from VK_IMAGE_LAYOUT_UNDEFINED to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL.
-    const VkImageMemoryBarrier transitionBarrier = {
+    const VkImageMemoryBarrier transitionBarrierSampled = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .pNext = NULL,
         .srcAccessMask = 0,
@@ -967,7 +1042,7 @@ static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t que
         .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         .srcQueueFamilyIndex = queueFamilyIndex,
         .dstQueueFamilyIndex = queueFamilyIndex,
-        .image = dstImage,
+        .image = dstImages[0],
         .subresourceRange = {
             .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
             .baseMipLevel = 0U,
@@ -976,8 +1051,29 @@ static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t que
             .layerCount = 1U
         }
     };
-    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-        0, NULL, 0, NULL, 1, &transitionBarrier);
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+        0, NULL, 0, NULL, 1, &transitionBarrierSampled);
+
+    const VkImageMemoryBarrier transitionBarrierStorage = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = NULL,
+        .srcAccessMask = 0,
+        .dstAccessMask = 0,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .srcQueueFamilyIndex = queueFamilyIndex,
+        .dstQueueFamilyIndex = queueFamilyIndex,
+        .image = dstImages[1],
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0U,
+            .levelCount = 1U,
+            .baseArrayLayer = 0U,
+            .layerCount = 1U
+        }
+    };
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+        0, NULL, 0, NULL, 1, &transitionBarrierStorage);
 
     const VkBufferImageCopy copyRegion = {
         .bufferOffset = 0U,
@@ -993,9 +1089,10 @@ static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t que
         .imageExtent = { (uint32_t)width, (uint32_t)height, 1U }
     };
 
-    vkCmdCopyBufferToImage(commandBuffer, srcHostBuffer, dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+    vkCmdCopyBufferToImage(commandBuffer, srcHostBuffer, dstImages[0], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+    vkCmdCopyBufferToImage(commandBuffer, srcHostBuffer, dstImages[1], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
-    const VkImageMemoryBarrier imageCopyBarrier = {
+    const VkImageMemoryBarrier imageCopyBarrierSampled = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .pNext = NULL,
         .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -1004,7 +1101,7 @@ static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t que
         .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         .srcQueueFamilyIndex = queueFamilyIndex,
         .dstQueueFamilyIndex = queueFamilyIndex,
-        .image = dstImage,
+        .image = dstImages[0],
         .subresourceRange = {
             .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
             .baseMipLevel = 0U,
@@ -1014,7 +1111,28 @@ static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t que
         }
     };
     vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-        0, NULL, 0, NULL, 1, &imageCopyBarrier);
+        0, NULL, 0, NULL, 1, &imageCopyBarrierSampled);
+
+    const VkImageMemoryBarrier imageCopyBarrierStorage = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = NULL,
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+        .srcQueueFamilyIndex = queueFamilyIndex,
+        .dstQueueFamilyIndex = queueFamilyIndex,
+        .image = dstImages[1],
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0U,
+            .levelCount = 1U,
+            .baseArrayLayer = 0U,
+            .layerCount = 1U
+        }
+    };
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
+        0, NULL, 0, NULL, 1, &imageCopyBarrierStorage);
 }
 
 static void SyncAndReadBuffer(VkCommandBuffer commandBuffer, uint32_t queueFamilyIndex, VkBuffer dstHostBuffer, VkBuffer srcDeviceBuffer, size_t size)
@@ -1228,7 +1346,7 @@ static VkResult CreateComputePipelineAdvanced(VkDevice device, VkShaderModule co
 static VkResult CreateComputePipelineTexturing(VkDevice device, VkShaderModule computeShaderModule, VkPipeline* pComputePipeline,
     VkPipelineLayout* pPipelineLayout, VkDescriptorSetLayout * pDescLayout)
 {
-    const VkDescriptorSetLayoutBinding descriptorSetLayoutBindings[2] = {
+    const VkDescriptorSetLayoutBinding descriptorSetLayoutBindings[] = {
         // buffer
         {
             .binding = 0,
@@ -1244,8 +1362,16 @@ static VkResult CreateComputePipelineTexturing(VkDevice device, VkShaderModule c
             .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
             .pImmutableSamplers = NULL
+        },
+        // Storage image
+        {
+            .binding = 2,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+            .pImmutableSamplers = NULL
         }
-    }; 
+    };
 
     const uint32_t bindingCount = (uint32_t)(sizeof(descriptorSetLayoutBindings) / sizeof(descriptorSetLayoutBindings[0]));
     const VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
@@ -1384,7 +1510,7 @@ static VkResult CreateDescriptorSets(VkDevice device, VkBuffer deviceBuffers[2],
     return res;
 }
 
-static VkResult CreateDescriptorSetsForTexturing(VkDevice device, VkBuffer dstBuffer, VkImageView srcImageView, VkSampler sampler, 
+static VkResult CreateDescriptorSetsForTexturing(VkDevice device, VkBuffer dstBuffer, VkImageView srcImageViews[2], VkSampler sampler,
     VkDescriptorSetLayout descLayout, VkDescriptorPool* pDescriptorPool, VkDescriptorSet* pDescSets)
 {
     const VkDescriptorPoolCreateInfo descriptorPoolInfo = {
@@ -1392,10 +1518,11 @@ static VkResult CreateDescriptorSetsForTexturing(VkDevice device, VkBuffer dstBu
         .pNext = NULL,
         .flags = 0,
         .maxSets = 2,
-        .poolSizeCount = 2,
+        .poolSizeCount = 3,
         .pPoolSizes = (VkDescriptorPoolSize[]) {
             {.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, .descriptorCount = 1},
-            {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 1}
+            {.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 1},
+            {.type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, .descriptorCount = 1}
         }
     };
     VkResult res = vkCreateDescriptorPool(device, &descriptorPoolInfo, NULL, pDescriptorPool);
@@ -1425,13 +1552,19 @@ static VkResult CreateDescriptorSetsForTexturing(VkDevice device, VkBuffer dstBu
         .range = VK_WHOLE_SIZE
     };
 
-    const VkDescriptorImageInfo srcImageInfo = {
+    const VkDescriptorImageInfo srcImageInfoSampled = {
         .sampler = sampler,
-        .imageView = srcImageView,
+        .imageView = srcImageViews[0],
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
     };
 
-    const VkWriteDescriptorSet writeDescSets[2] = {
+    const VkDescriptorImageInfo srcImageInfoStorage = {
+        .sampler = VK_NULL_HANDLE,
+        .imageView = srcImageViews[1],
+        .imageLayout = VK_IMAGE_LAYOUT_GENERAL
+    };
+
+    const VkWriteDescriptorSet writeDescSets[] = {
         // dstBuffer write descriptor set
         {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -1445,7 +1578,7 @@ static VkResult CreateDescriptorSetsForTexturing(VkDevice device, VkBuffer dstBu
             .pBufferInfo = &dstDescBufferInfo,
             .pTexelBufferView = NULL
         },
-        // srcImageView write descriptor set
+        // sampled srcImageView write descriptor set
         {
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .pNext = NULL,
@@ -1454,13 +1587,26 @@ static VkResult CreateDescriptorSetsForTexturing(VkDevice device, VkBuffer dstBu
             .dstArrayElement = 0,
             .descriptorCount = 1,
             .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &srcImageInfo,
+            .pImageInfo = &srcImageInfoSampled,
+            .pBufferInfo = NULL,
+            .pTexelBufferView = NULL
+        },
+        // sampled srcImageView write descriptor set
+        {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .pNext = NULL,
+            .dstSet = *pDescSets,
+            .dstBinding = 2,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .pImageInfo = &srcImageInfoStorage,
             .pBufferInfo = NULL,
             .pTexelBufferView = NULL
         }
     };
 
-    vkUpdateDescriptorSets(device, 2, writeDescSets, 0, NULL);
+    vkUpdateDescriptorSets(device, (uint32_t)(sizeof(writeDescSets) / sizeof(writeDescSets[0])), writeDescSets, 0, NULL);
 
     return res;
 }
@@ -1798,8 +1944,9 @@ static void AdvancedComputeTest(void)
 
         // Verify the result
         int sum = 0;
-        for (int i = 0; i < (int)elemCount; i++)
+        for (int i = 0; i < (int)elemCount; i++) {
             sum += i + constValue;
+        }
         void* hostBuffer = NULL;
         result = vkMapMemory(s_specDevice, deviceMemories[0], 0, bufferSize, 0, &hostBuffer);
         if (result != VK_SUCCESS)
@@ -1864,19 +2011,19 @@ static void TexturingComputeTest(void)
 {
     puts("\n================ Begin texturing compute test ================\n");
 
-    VkDeviceMemory deviceMemories[2] = { NULL };
+    VkDeviceMemory deviceMemories[2] = { VK_NULL_HANDLE };
     // deviceBuffers[0] as host temporal buffer, deviceBuffers[1] as device dst buffer
-    VkBuffer deviceBuffers[2] = { NULL };
-    VkImage images[1] = { NULL };
-    VkImageView imageViews[1] = { NULL };
-    VkSampler samplers[1] = { NULL };
-    VkShaderModule computeShaderModule = NULL;
-    VkPipeline computePipeline = NULL;
-    VkDescriptorSetLayout descriptorSetLayout = NULL;
-    VkPipelineLayout pipelineLayout = NULL;
-    VkDescriptorPool descriptorPool = NULL;
-    VkCommandPool commandPool = NULL;
-    VkCommandBuffer commandBuffers[1] = { NULL };
+    VkBuffer deviceBuffers[2] = { VK_NULL_HANDLE };
+    VkImage images[2] = { VK_NULL_HANDLE };
+    VkImageView imageViews[2] = { VK_NULL_HANDLE };
+    VkSampler samplers[1] = { VK_NULL_HANDLE };
+    VkShaderModule computeShaderModule = VK_NULL_HANDLE;
+    VkPipeline computePipeline = VK_NULL_HANDLE;
+    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+    VkCommandBuffer commandBuffers[1] = { VK_NULL_HANDLE };
     uint32_t const commandBufferCount = (uint32_t)(sizeof(commandBuffers) / sizeof(commandBuffers[0]));
 
     do
@@ -1906,7 +2053,7 @@ static void TexturingComputeTest(void)
         // There's no need to destroy `descriptorSet`, since VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag is not set
         // in `flags` in `VkDescriptorPoolCreateInfo`
         VkDescriptorSet descriptorSet = NULL;
-        result = CreateDescriptorSetsForTexturing(s_specDevice, deviceBuffers[1], imageViews[0], samplers[0], 
+        result = CreateDescriptorSetsForTexturing(s_specDevice, deviceBuffers[1], imageViews, samplers[0], 
                                         descriptorSetLayout, &descriptorPool, &descriptorSet);
         if (result != VK_SUCCESS)
         {
@@ -1942,7 +2089,7 @@ static void TexturingComputeTest(void)
 
         const size_t bufferSize = TEST_IMAGE_WIDTH * TEST_IMAGE_HEIGHT * sizeof(uint32_t) * 4;
 
-        CopyToImageBufferAndSync(commandBuffers[0], s_specQueueFamilyIndex, images[0], deviceBuffers[0], TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT);
+        CopyToImageBufferAndSync(commandBuffers[0], s_specQueueFamilyIndex, images, deviceBuffers[0], TEST_IMAGE_WIDTH, TEST_IMAGE_HEIGHT);
 
         vkCmdDispatch(commandBuffers[0], TEST_IMAGE_WIDTH / 16, TEST_IMAGE_HEIGHT / 16, 1);
 
@@ -1992,14 +2139,33 @@ static void TexturingComputeTest(void)
         uint32_t* dstMem = hostBuffer;
         const uint32_t rowElems = TEST_IMAGE_WIDTH * 4;
         uint32_t counter = 0;
+        uint32_t subCounter = 0;
         for (uint32_t row = 0; row < TEST_IMAGE_HEIGHT; ++row)
         {
-            for (uint32_t col = 0; col < rowElems; ++col, ++counter)
+            for (uint32_t col = 0; col < rowElems; col += 4, ++subCounter)
             {
-                if (dstMem[row * rowElems + col] != counter / 2)
+                if (dstMem[row * rowElems + col] != counter++ / 2 + (subCounter & 0xffU))
                 {
                     printf("Result error @col: %u, @row: %u, result is: %u\n",
                             col, row, dstMem[row * rowElems + col]);
+                    break;
+                }
+                if (dstMem[row * rowElems + col + 1] != counter++ / 2 + ((subCounter >> 8) & 0xffU))
+                {
+                    printf("Result error @col: %u, @row: %u, result is: %u\n",
+                        col, row, dstMem[row * rowElems + col + 1]);
+                    break;
+                }
+                if (dstMem[row * rowElems + col + 2] != counter++ / 2 + ((subCounter >> 16) & 0xffU))
+                {
+                    printf("Result error @col: %u, @row: %u, result is: %u\n",
+                        col, row, dstMem[row * rowElems + col + 2]);
+                    break;
+                }
+                if (dstMem[row * rowElems + col + 3] != counter++ / 2 + (subCounter >> 24))
+                {
+                    printf("Result error @col: %u, @row: %u, result is: %u\n",
+                        col, row, dstMem[row * rowElems + col + 3]);
                     break;
                 }
             }

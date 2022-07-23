@@ -9,6 +9,8 @@ layout(std430, set = 0, binding = 0) buffer dst {
 
 layout(set = 0, binding = 1) uniform highp usampler2D imageSampler;
 
+layout(set = 0, binding = 2, rgba8ui) uniform highp uimage2D imageStorage;
+
 void main(void)
 {
     const uint imageWidth = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
@@ -16,7 +18,8 @@ void main(void)
     const uint y = gl_GlobalInvocationID.y;
     const uint index = y * imageWidth + x;
 
-    const uvec4 pixel = textureLod(imageSampler, vec2(x, y), 0.0f);
-    dstBuffer[index] = uvec4(pixel.x / 2, pixel.y / 2, pixel.z / 2, pixel.w / 2);
+    const uvec4 pixel1 = textureLod(imageSampler, vec2(x, y), 0.0f);
+    const uvec4 pixel2 = imageLoad(imageStorage, ivec2(int(x), int(y)));
+    dstBuffer[index] = uvec4(pixel1.x / 2, pixel1.y / 2, pixel1.z / 2, pixel1.w / 2) + pixel2;
 }
 
