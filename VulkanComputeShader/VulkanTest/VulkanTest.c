@@ -722,7 +722,7 @@ static VkResult AllocateMemoryAndBuffers(VkDevice device, const VkPhysicalDevice
 }
 
 // deviceMemories[0] as host visible memory, deviceMemories[1] as device local memory
-// deviceBuffers[0] as host temporal buffer, deviceBuffers[1] and outBufferViews[0] as dstStorageImageBuffer
+// deviceBuffers[0] as host temporal buffer, deviceBuffers[1] and outBufferViews[0] as dstTexelImageBuffer
 // outImages[0] and outImageViews[0] as sampled image
 // outImages[1] and outImageViews[1] as storageImage
 static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const VkPhysicalDeviceMemoryProperties* pMemoryProperties, VkDeviceMemory deviceMemories[2],

@@ -3,8 +3,8 @@
 
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-//layout(set = 0, binding = 0) uniform highp usamplerBuffer imageSamplerBuffer;
-layout(set = 0, binding = 0, rgba32ui) uniform highp writeonly uimageBuffer dstStorageImageBuffer;
+//layout(set = 0, binding = 0) uniform highp usamplerBuffer dstSamplerBuffer;
+layout(set = 0, binding = 0, rgba32ui) uniform highp writeonly uimageBuffer dstTexelImageBuffer;
 layout(set = 0, binding = 1) uniform highp usampler2D imageSampler;
 layout(set = 0, binding = 2, rgba8ui) uniform highp readonly uimage2D storageImage;
 
@@ -18,6 +18,6 @@ void main(void)
 
     const uvec4 pixel1 = textureLod(imageSampler, vec2(x, y), 0.0f);
     const uvec4 pixel2 = imageLoad(storageImage, pointCoord);
-    imageStore(dstStorageImageBuffer, int(index), uvec4(pixel1.x / 2, pixel1.y / 2, pixel1.z / 2, pixel1.w / 2) + pixel2);
+    imageStore(dstTexelImageBuffer, int(index), uvec4(pixel1.x / 2, pixel1.y / 2, pixel1.z / 2, pixel1.w / 2) + pixel2);
 }
 
