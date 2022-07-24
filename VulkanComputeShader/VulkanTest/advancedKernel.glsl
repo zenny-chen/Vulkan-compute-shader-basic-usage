@@ -1,6 +1,4 @@
 #version 450
-#extension GL_ARB_separate_shader_objects : enable
-#extension GL_ARB_separate_shader_objects : enable
 #extension GL_EXT_shader_8bit_storage : enable
 #extension GL_EXT_shader_16bit_storage : enable
 #extension GL_ARB_gpu_shader_int64 : enable
