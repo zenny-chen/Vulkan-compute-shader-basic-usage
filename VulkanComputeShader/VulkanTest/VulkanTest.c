@@ -1083,8 +1083,6 @@ static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t que
             .layerCount = 1U
         }
     };
-    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-        0, NULL, 0, NULL, 1, &transitionBarrierSampled);
 
     const VkImageMemoryBarrier transitionBarrierStorage = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -1105,7 +1103,8 @@ static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t que
         }
     };
     vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
-        0, NULL, 0, NULL, 1, &transitionBarrierStorage);
+        0, NULL, 0, NULL, 
+        2, (const VkImageMemoryBarrier[]) { transitionBarrierSampled, transitionBarrierStorage });
 
     const VkBufferImageCopy copyRegion = {
         .bufferOffset = 0U,
@@ -1142,8 +1141,6 @@ static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t que
             .layerCount = 1U
         }
     };
-    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-        0, NULL, 0, NULL, 1, &imageCopyBarrierSampled);
 
     const VkImageMemoryBarrier imageCopyBarrierStorage = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -1164,7 +1161,8 @@ static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t que
         }
     };
     vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
-        0, NULL, 0, NULL, 1, &imageCopyBarrierStorage);
+        0, NULL, 0, NULL,
+        2, (const VkImageMemoryBarrier[]) { imageCopyBarrierSampled, imageCopyBarrierStorage });
 }
 
 static void SyncAndReadBuffer(VkCommandBuffer commandBuffer, uint32_t queueFamilyIndex, VkBuffer dstHostBuffer, VkBuffer srcDeviceBuffer, size_t size)
