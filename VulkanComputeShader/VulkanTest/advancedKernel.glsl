@@ -24,11 +24,11 @@ layout(push_constant) uniform pushConstants{
     highp int constValue;
 };
 
-layout(set = 0, binding = 0) buffer dst {
+layout(set = 0, binding = 0) buffer writeonly dst {
     highp int dstBuffer[];
 };
 
-layout(set = 0, binding = 1) buffer src {
+layout(set = 0, binding = 1) buffer readonly src {
     highp int srcBuffer[];
 };
 

@@ -4,11 +4,11 @@
 
 layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
 
-layout(std430, set = 0, binding = 0) buffer dst {
+layout(std430, set = 0, binding = 0) buffer writeonly dst {
     highp int dstBuffer[];
 };
 
-layout(std430, set = 0, binding = 1) buffer src {
+layout(std430, set = 0, binding = 1) buffer readonly src {
     highp int srcBuffer[];
 };
 
