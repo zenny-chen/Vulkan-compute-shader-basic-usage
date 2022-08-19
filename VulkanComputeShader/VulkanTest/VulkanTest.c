@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <errno.h>
 #include <vulkan/vulkan.h>
 
@@ -337,7 +338,6 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
         printf("Your input (%u) exceeds the max number of available devices (%u)\n", deviceIndex, gpu_count);
         return VK_ERROR_DEVICE_LOST;
     }
-
     printf("You have chosen device[%u]...\n", deviceIndex);
 
     // Query Vulkan extensions the current selected physical device supports
@@ -393,7 +393,7 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
         // link to customBorderColorFeature node
         .pNext = &customBorderColorFeature
     };
-
+    
     // physical device feature 2
     VkPhysicalDeviceFeatures2 features2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
@@ -1460,7 +1460,7 @@ static VkResult CreateComputePipelineTexturing(VkDevice device, VkShaderModule c
     return res;
 }
 
-static VkResult CreateDescriptorSets(VkDevice device, VkBuffer deviceBuffers[2], VkDescriptorSetLayout descLayout,
+static VkResult CreateDescriptorSets(VkDevice device, VkBuffer deviceBuffers[2], size_t bufferSize, VkDescriptorSetLayout descLayout,
     VkDescriptorPool *pDescriptorPool, VkDescriptorSet *pDescSets)
 {
     const VkDescriptorPoolCreateInfo descriptorPoolInfo = {
@@ -1497,13 +1497,13 @@ static VkResult CreateDescriptorSets(VkDevice device, VkBuffer deviceBuffers[2],
     const VkDescriptorBufferInfo dstDescBufferInfo = {
         .buffer = deviceBuffers[0],
         .offset = 0,
-        .range = VK_WHOLE_SIZE
+        .range = bufferSize
     };
 
     const VkDescriptorBufferInfo srcDescBufferInfo = {
         .buffer = deviceBuffers[1],
         .offset = 0,
-        .range = VK_WHOLE_SIZE
+        .range = bufferSize
     };
 
     const VkWriteDescriptorSet writeDescSet[] = {
@@ -1682,11 +1682,12 @@ static void SimpleComputeTest(void)
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkCommandBuffer commandBuffers[1] = { VK_NULL_HANDLE };
+    VkFence fence = VK_NULL_HANDLE;
     uint32_t const commandBufferCount = (uint32_t)(sizeof(commandBuffers) / sizeof(commandBuffers[0]));
 
     do
     {
-        const uint32_t elemCount = 100 * 1024 * 1024;
+        const uint32_t elemCount = 25 * 1024 * 1024;
         const VkDeviceSize bufferSize = elemCount * sizeof(int);
 
         VkResult result = AllocateMemoryAndBuffers(s_specDevice, &s_memoryProperties, deviceMemories, deviceBuffers, bufferSize, s_specQueueFamilyIndex);
@@ -1713,7 +1714,7 @@ static void SimpleComputeTest(void)
         // There's no need to destroy `descriptorSet`, since VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag is not set
         // in `flags` in `VkDescriptorPoolCreateInfo`
         VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-        result = CreateDescriptorSets(s_specDevice, &deviceBuffers[1], descriptorSetLayout, &descriptorPool, &descriptorSet);
+        result = CreateDescriptorSets(s_specDevice, &deviceBuffers[1], bufferSize,  descriptorSetLayout,  &descriptorPool,  &descriptorSet);
         if (result != VK_SUCCESS)
         {
             puts("CreateDescriptorSets failed!");
@@ -1759,6 +1760,18 @@ static void SimpleComputeTest(void)
             break;
         }
 
+        const VkFenceCreateInfo fenceCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0
+        };
+        result = vkCreateFence(s_specDevice, &fenceCreateInfo, NULL, &fence);
+        if (result != VK_SUCCESS)
+        {
+            printf("vkCreateFence failed: %d\n", result);
+            break;
+        }
+
         const VkSubmitInfo submit_info = {
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
             .pNext = NULL,
@@ -1770,18 +1783,17 @@ static void SimpleComputeTest(void)
             .signalSemaphoreCount = 0,
             .pSignalSemaphores = NULL
         };
-
-        result = vkQueueSubmit(queue, 1, &submit_info, VK_NULL_HANDLE);
+        result = vkQueueSubmit(queue, 1, &submit_info, fence);
         if (result != VK_SUCCESS)
         {
             printf("vkQueueSubmit failed: %d\n", result);
             break;
         }
 
-        result = vkQueueWaitIdle(queue);
+        result = vkWaitForFences(s_specDevice, 1, &fence, VK_TRUE, UINT64_MAX);
         if (result != VK_SUCCESS)
         {
-            printf("vkQueueWaitIdle failed: %d\n", result);
+            printf("vkWaitForFences failed: %d\n", result);
             break;
         }
 
@@ -1809,6 +1821,9 @@ static void SimpleComputeTest(void)
 
     } while (false);
 
+    if (fence != VK_NULL_HANDLE) {
+        vkDestroyFence(s_specDevice, fence, NULL);
+    }
     if (commandPool != VK_NULL_HANDLE)
     {
         vkFreeCommandBuffers(s_specDevice, commandPool, commandBufferCount, commandBuffers);
@@ -1861,6 +1876,7 @@ static void AdvancedComputeTest(void)
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkCommandBuffer commandBuffers[1] = { VK_NULL_HANDLE };
     uint32_t const commandBufferCount = (uint32_t)(sizeof(commandBuffers) / sizeof(commandBuffers[0]));
+    VkFence fence = VK_NULL_HANDLE;
 
     if (s_instance == VK_NULL_HANDLE || s_specDevice == VK_NULL_HANDLE) {
         return;
@@ -1895,14 +1911,14 @@ static void AdvancedComputeTest(void)
         // There's no need to destroy `descriptorSet`, since VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT flag is not set
         // in `flags` in `VkDescriptorPoolCreateInfo`
         VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-        result = CreateDescriptorSets(s_specDevice, &deviceBuffers[1], descriptorSetLayout, &descriptorPool, &descriptorSet);
+        result = CreateDescriptorSets(s_specDevice, &deviceBuffers[1], bufferSize,  descriptorSetLayout,  &descriptorPool,  &descriptorSet);
         if (result != VK_SUCCESS)
         {
             puts("CreateDescriptorSets failed!");
             break;
         }
 
-        result = InitializeCommandBuffer(s_specQueueFamilyIndex, s_specDevice, &commandPool, commandBuffers, commandBufferCount);
+        result = InitializeCommandBuffer(s_specQueueFamilyIndex, s_specDevice,  &commandPool, commandBuffers, commandBufferCount);
         if (result != VK_SUCCESS)
         {
             puts("InitializeCommandBuffer failed!");
@@ -1946,6 +1962,18 @@ static void AdvancedComputeTest(void)
             break;
         }
 
+        const VkFenceCreateInfo fenceCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0
+        };
+        result = vkCreateFence(s_specDevice, &fenceCreateInfo, NULL, &fence);
+        if (result != VK_SUCCESS)
+        {
+            printf("vkCreateFence failed: %d\n", result);
+            break;
+        }
+
         const VkSubmitInfo submit_info = {
             .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
             .pNext = NULL,
@@ -1957,18 +1985,17 @@ static void AdvancedComputeTest(void)
             .signalSemaphoreCount = 0,
             .pSignalSemaphores = NULL
         };
-
-        result = vkQueueSubmit(queue, 1, &submit_info, VK_NULL_HANDLE);
+        result = vkQueueSubmit(queue, 1, &submit_info, fence);
         if (result != VK_SUCCESS)
         {
             printf("vkQueueSubmit failed: %d\n", result);
             break;
         }
 
-        result = vkQueueWaitIdle(queue);
+        result = vkWaitForFences(s_specDevice, 1, &fence, VK_TRUE, UINT64_MAX);
         if (result != VK_SUCCESS)
         {
-            printf("vkQueueWaitIdle failed: %d\n", result);
+            printf("vkWaitForFences failed: %d\n", result);
             break;
         }
 
@@ -2000,6 +2027,9 @@ static void AdvancedComputeTest(void)
 
     } while (false);
 
+    if (fence != VK_NULL_HANDLE) {
+        vkDestroyFence(s_specDevice, fence, NULL);
+    }
     if (commandPool != VK_NULL_HANDLE)
     {
         vkFreeCommandBuffers(s_specDevice, commandPool, commandBufferCount, commandBuffers);
