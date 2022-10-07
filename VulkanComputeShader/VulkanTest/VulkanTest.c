@@ -1876,6 +1876,7 @@ static void AdvancedComputeTest(void)
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkCommandBuffer commandBuffers[1] = { VK_NULL_HANDLE };
     uint32_t const commandBufferCount = (uint32_t)(sizeof(commandBuffers) / sizeof(commandBuffers[0]));
+    VkEvent event = VK_NULL_HANDLE;
     VkFence fence = VK_NULL_HANDLE;
 
     if (s_instance == VK_NULL_HANDLE || s_specDevice == VK_NULL_HANDLE) {
@@ -1887,7 +1888,26 @@ static void AdvancedComputeTest(void)
         const uint32_t elemCount = 1024;
         const VkDeviceSize bufferSize = elemCount * sizeof(int);
 
-        VkResult result = AllocateMemoryAndBuffers(s_specDevice, &s_memoryProperties, deviceMemories, deviceBuffers, bufferSize, s_specQueueFamilyIndex);
+        const VkEventCreateInfo eventCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_EVENT_CREATE_INFO,
+            .pNext = NULL,
+            .flags = 0
+        };
+        VkResult result = vkCreateEvent(s_specDevice, &eventCreateInfo, NULL, &event);
+        if (result != VK_SUCCESS)
+        {
+            printf("vkCreateEvent failed: %d\n", result);
+            break;
+        }
+
+        result = vkResetEvent(s_specDevice, event);
+        if (result != VK_SUCCESS)
+        {
+            printf("vkResetEvent failed: %d\n", result);
+            break;
+        }
+
+        result = AllocateMemoryAndBuffers(s_specDevice, &s_memoryProperties, deviceMemories, deviceBuffers, bufferSize, s_specQueueFamilyIndex);
         if (result != VK_SUCCESS)
         {
             puts("AllocateMemoryAndBuffers failed!");
@@ -1955,6 +1975,8 @@ static void AdvancedComputeTest(void)
 
         SyncAndReadBuffer(commandBuffers[0], s_specQueueFamilyIndex, deviceBuffers[0], deviceBuffers[1], bufferSize);
 
+        vkCmdSetEvent(commandBuffers[0], event, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
         result = vkEndCommandBuffer(commandBuffers[0]);
         if (result != VK_SUCCESS)
         {
@@ -1992,10 +2014,19 @@ static void AdvancedComputeTest(void)
             break;
         }
 
-        result = vkWaitForFences(s_specDevice, 1, &fence, VK_TRUE, UINT64_MAX);
-        if (result != VK_SUCCESS)
+        // ATTENTION: using vkGetEventStatus here may not successfully sync with GPU execution.
+        // On some Intel GPUs, it will fail to sync the data transfer from device memory to host accessable memory.
+        do
         {
-            printf("vkWaitForFences failed: %d\n", result);
+            result = vkGetEventStatus(s_specDevice, event);
+            if (result != VK_EVENT_SET && result != VK_EVENT_RESET) {
+                break;
+            }
+        } 
+        while (result != VK_EVENT_SET);
+        if (result != VK_EVENT_SET)
+        {
+            printf("vkGetEventStatus failed: %d\n", result);
             break;
         }
 
@@ -2016,7 +2047,7 @@ static void AdvancedComputeTest(void)
         {
             if (dstMem[i] != sum)
             {
-                printf("Result error @ %d, result is: %d\n", i, dstMem[i]);
+                printf("Result error @ %d, result is: %d, correct is: %d\n", i, dstMem[i], sum);
                 break;
             }
         }
@@ -2025,8 +2056,19 @@ static void AdvancedComputeTest(void)
 
         vkUnmapMemory(s_specDevice, deviceMemories[0]);
 
+        // Here, we use a fence to ensure the queue has been completed before destroying the Vulkan resources.
+        result = vkWaitForFences(s_specDevice, 1, &fence, VK_TRUE, UINT64_MAX);
+        if (result != VK_SUCCESS)
+        {
+            printf("vkWaitForFences failed: %d\n", result);
+            break;
+        }
+
     } while (false);
 
+    if (event != VK_NULL_HANDLE) {
+        vkDestroyEvent(s_specDevice, event, NULL);
+    }
     if (fence != VK_NULL_HANDLE) {
         vkDestroyFence(s_specDevice, fence, NULL);
     }
