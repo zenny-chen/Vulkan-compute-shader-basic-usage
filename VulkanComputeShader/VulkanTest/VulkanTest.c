@@ -818,7 +818,7 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
 
     VkMemoryRequirements imageMemBufRequirements = { 0 };
     vkGetImageMemoryRequirements(device, outImages[0], &imageMemBufRequirements);
-    const size_t totoalDeviceMemSize = imageMemBufRequirements.size * 2 + imageMemBufRequirements.size / 4;
+    const size_t totoalDeviceMemSize = imageMemBufRequirements.size * 3;
 
     const VkImageCreateInfo imageCreateInfoStorage = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -856,7 +856,7 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         .queueFamilyIndexCount = 1,
         .pQueueFamilyIndices = (uint32_t[]){ queueFamilyIndex }
     };
-
+    
     res = vkCreateBuffer(device, &texelBufCreateInfo, NULL, &deviceBuffers[1]);
     if (res != VK_SUCCESS)
     {
