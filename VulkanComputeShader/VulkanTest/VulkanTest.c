@@ -1055,7 +1055,7 @@ static void WriteBufferAndSync(VkCommandBuffer commandBuffer, uint32_t queueFami
         .dstQueueFamilyIndex = queueFamilyIndex,
         .buffer = dstDeviceBuffer,
         .offset = 0,
-        .size = VK_WHOLE_SIZE
+        .size = size
     };
 
     vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0,
@@ -1176,7 +1176,7 @@ static void SyncAndReadBuffer(VkCommandBuffer commandBuffer, uint32_t queueFamil
         .dstQueueFamilyIndex = queueFamilyIndex,
         .buffer = srcDeviceBuffer,
         .offset = 0,
-        .size = VK_WHOLE_SIZE
+        .size = size
     };
     vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
         0, NULL, 1, &bufferBarrier, 0, NULL);
