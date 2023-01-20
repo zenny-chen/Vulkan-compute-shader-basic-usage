@@ -1167,13 +1167,6 @@ static void CopyToImageBufferAndSync(VkCommandBuffer commandBuffer, uint32_t que
 
 static void SyncAndReadBuffer(VkCommandBuffer commandBuffer, uint32_t queueFamilyIndex, VkBuffer dstHostBuffer, VkBuffer srcDeviceBuffer, size_t size)
 {
-    const VkBufferCopy copyRegion = {
-        .srcOffset = 0,
-        .dstOffset = 0,
-        .size = size
-    };
-    vkCmdCopyBuffer(commandBuffer, srcDeviceBuffer, dstHostBuffer, 1, &copyRegion);
-
     const VkBufferMemoryBarrier bufferBarrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
         .pNext = NULL,
@@ -1185,9 +1178,15 @@ static void SyncAndReadBuffer(VkCommandBuffer commandBuffer, uint32_t queueFamil
         .offset = 0,
         .size = VK_WHOLE_SIZE
     };
-
     vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
         0, NULL, 1, &bufferBarrier, 0, NULL);
+
+    const VkBufferCopy copyRegion = {
+        .srcOffset = 0,
+        .dstOffset = 0,
+        .size = size
+    };
+    vkCmdCopyBuffer(commandBuffer, srcDeviceBuffer, dstHostBuffer, 1, &copyRegion);
 }
 
 static VkResult CreateShaderModule(VkDevice device, const char *fileName, VkShaderModule *pShaderModule)
@@ -1876,7 +1875,6 @@ static void AdvancedComputeTest(void)
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkCommandBuffer commandBuffers[1] = { VK_NULL_HANDLE };
     uint32_t const commandBufferCount = (uint32_t)(sizeof(commandBuffers) / sizeof(commandBuffers[0]));
-    VkEvent event = VK_NULL_HANDLE;
     VkFence fence = VK_NULL_HANDLE;
 
     if (s_instance == VK_NULL_HANDLE || s_specDevice == VK_NULL_HANDLE) {
@@ -1893,21 +1891,8 @@ static void AdvancedComputeTest(void)
             .pNext = NULL,
             .flags = 0
         };
-        VkResult result = vkCreateEvent(s_specDevice, &eventCreateInfo, NULL, &event);
-        if (result != VK_SUCCESS)
-        {
-            printf("vkCreateEvent failed: %d\n", result);
-            break;
-        }
 
-        result = vkResetEvent(s_specDevice, event);
-        if (result != VK_SUCCESS)
-        {
-            printf("vkResetEvent failed: %d\n", result);
-            break;
-        }
-
-        result = AllocateMemoryAndBuffers(s_specDevice, &s_memoryProperties, deviceMemories, deviceBuffers, bufferSize, s_specQueueFamilyIndex);
+        VkResult result = AllocateMemoryAndBuffers(s_specDevice, &s_memoryProperties, deviceMemories, deviceBuffers, bufferSize, s_specQueueFamilyIndex);
         if (result != VK_SUCCESS)
         {
             puts("AllocateMemoryAndBuffers failed!");
@@ -1975,8 +1960,6 @@ static void AdvancedComputeTest(void)
 
         SyncAndReadBuffer(commandBuffers[0], s_specQueueFamilyIndex, deviceBuffers[0], deviceBuffers[1], bufferSize);
 
-        vkCmdSetEvent(commandBuffers[0], event, VK_PIPELINE_STAGE_TRANSFER_BIT);
-
         result = vkEndCommandBuffer(commandBuffers[0]);
         if (result != VK_SUCCESS)
         {
@@ -2014,19 +1997,10 @@ static void AdvancedComputeTest(void)
             break;
         }
 
-        // ATTENTION: using vkGetEventStatus here may not successfully sync with GPU execution.
-        // On some Intel GPUs, it will fail to sync the data transfer from device memory to host accessable memory.
-        do
+        result = vkWaitForFences(s_specDevice, 1, &fence, VK_TRUE, UINT64_MAX);
+        if (result != VK_SUCCESS)
         {
-            result = vkGetEventStatus(s_specDevice, event);
-            if (result != VK_EVENT_SET && result != VK_EVENT_RESET) {
-                break;
-            }
-        } 
-        while (result != VK_EVENT_SET);
-        if (result != VK_EVENT_SET)
-        {
-            printf("vkGetEventStatus failed: %d\n", result);
+            printf("vkWaitForFences failed: %d\n", result);
             break;
         }
 
@@ -2066,9 +2040,6 @@ static void AdvancedComputeTest(void)
 
     } while (false);
 
-    if (event != VK_NULL_HANDLE) {
-        vkDestroyEvent(s_specDevice, event, NULL);
-    }
     if (fence != VK_NULL_HANDLE) {
         vkDestroyFence(s_specDevice, fence, NULL);
     }
