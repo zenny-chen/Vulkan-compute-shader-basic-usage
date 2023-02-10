@@ -3,6 +3,7 @@
 #extension GL_EXT_shader_16bit_storage : enable
 #extension GL_ARB_gpu_shader_int64 : enable
 #extension GL_EXT_shader_atomic_int64 : enable
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int16 : enable
 #extension GL_EXT_shader_explicit_arithmetic_types_int32 : enable

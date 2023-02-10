@@ -1805,7 +1805,7 @@ static void SimpleComputeTest(void)
             break;
         }
         int* dstMem = hostBuffer;
-        for (int i = 0; i < (int)elemCount; i++)
+        for (int i = 1; i < (int)elemCount; i++)
         {
             if (dstMem[i] != i * 2)
             {
@@ -1814,7 +1814,13 @@ static void SimpleComputeTest(void)
             }
         }
 
-        printf("The first 5 elements sum = %d\n", dstMem[0] + dstMem[1] + dstMem[2] + dstMem[3] + dstMem[4]);
+        printf("The first 5 elements sum = %d\n", dstMem[1] + dstMem[2] + dstMem[3] + dstMem[4] + dstMem[5]);
+        if (dstMem[0] >= 0) {
+            printf("VULKAN version: %d\n", dstMem[0]);
+        }
+        else {
+            puts("VULKAN version not defined!!");
+        }
 
         vkUnmapMemory(s_specDevice, deviceMemories[0]);
 

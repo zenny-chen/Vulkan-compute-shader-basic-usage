@@ -19,6 +19,15 @@ void main(void)
 
     subgroupBarrier();
 
+    if (gid == 0)
+    {
+#ifdef VULKAN
+        dstBuffer[0] = VULKAN;
+#else
+        dstBuffer[0] = -1;
+#endif
+    }
+
     if (gid == 1)
     {
         bool res1 = subgroupAny(gid == 1);
