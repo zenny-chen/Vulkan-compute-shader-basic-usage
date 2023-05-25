@@ -15,11 +15,11 @@
 #extension GL_ARB_shader_clock : enable
 #extension GL_EXT_shader_realtime_clock : enable
 
-layout(local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x_id = 0, local_size_y_id = 1, local_size_z_id = 2) in;
 
 // shared threadgroup memory size must be larger than zero.
 // This constant will be specialized when creating the compute pipeline.
-layout(constant_id = 0) const int SHARED_MEM_SIZE = 128;
+layout(constant_id = 3) const int SHARED_MEM_SIZE = 128;
 
 layout(push_constant) uniform pushConstants{
     highp int constValue;

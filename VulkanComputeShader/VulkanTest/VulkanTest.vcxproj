@@ -23,6 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="advancedKernel.glsl" />
+    <None Include="glsl_builder.bat" />
     <None Include="simpleKernel.glsl" />
     <None Include="texturingKernel.comp" />
   </ItemGroup>

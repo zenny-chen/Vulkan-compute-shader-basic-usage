@@ -466,6 +466,8 @@ static VkResult InitializeDevice(VkQueueFlagBits queueFlag, VkPhysicalDeviceMemo
     FetchSupportedShaderStages(subgroupSizeProps.supportedStages, strBuffer);
     printf("Current device supported subgroup stages: %s\n", strBuffer);
 
+    printf("Current device max workgroup size: %u\n", properties2.properties.limits.maxComputeWorkGroupInvocations);
+
     // Get device memory properties
     vkGetPhysicalDeviceMemoryProperties(physicalDevices[deviceIndex], pMemoryProperties);
 
@@ -1289,7 +1291,8 @@ static VkResult CreateComputePipelineSimple(VkDevice device, VkShaderModule comp
     return res;
 }
 
-static VkResult CreateComputePipelineAdvanced(VkDevice device, VkShaderModule computeShaderModule, int sharedMemorySize, VkPipeline* pComputePipeline,
+// Return the currently specified max workgroup size
+static uint32_t CreateComputePipelineAdvanced(VkDevice device, VkShaderModule computeShaderModule, int sharedMemorySize, VkPipeline* pComputePipeline,
     VkPipelineLayout* pPipelineLayout, VkDescriptorSetLayout* pDescLayout)
 {
     const VkDescriptorSetLayoutBinding descriptorSetLayoutBindings[2] = {
@@ -1306,13 +1309,15 @@ static VkResult CreateComputePipelineAdvanced(VkDevice device, VkShaderModule co
     if (res != VK_SUCCESS)
     {
         printf("vkCreateDescriptorSetLayout failed: %d\n", res);
-        return res;
+        return 0;
     }
 
-    const VkPushConstantRange pushConstRange = {
-        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-        .offset = 0,
-        .size = sizeof(int)
+    const VkPushConstantRange pushConstRanges[1] = {
+        {
+            .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+            .offset = 0,
+            .size = sizeof(int)
+        }
     };
 
     const VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
@@ -1321,28 +1326,53 @@ static VkResult CreateComputePipelineAdvanced(VkDevice device, VkShaderModule co
         .flags = 0,
         .setLayoutCount = 1,
         .pSetLayouts = pDescLayout,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &pushConstRange
+        .pushConstantRangeCount = (uint32_t)(sizeof(pushConstRanges) / sizeof(pushConstRanges[0])),
+        .pPushConstantRanges = pushConstRanges
     };
 
     res = vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, NULL, pPipelineLayout);
     if (res != VK_SUCCESS)
     {
         printf("vkCreatePipelineLayout failed: %d\n", res);
-        return res;
+        return 0;
     }
 
-    const VkSpecializationMapEntry mapEntry = {
-        .constantID = 0,
-        .offset = 0,
-        .size = sizeof(sharedMemorySize)
+    const struct WorkGroupSizeWithSharedElemCountType
+    {
+        uint32_t local_size_x;
+        uint32_t local_size_y;
+        uint32_t local_size_z;
+        int sharedMemoryElemCount;
+    } specConsts = { 1024U, 1U, 1U, sharedMemorySize };
+
+    const VkSpecializationMapEntry mapEntries[4] = {
+        {
+            .constantID = 0,
+            .offset = (uint32_t)offsetof(struct WorkGroupSizeWithSharedElemCountType, local_size_x),
+            .size = sizeof(specConsts.local_size_x)
+        },
+        {
+            .constantID = 1,
+            .offset = (uint32_t)offsetof(struct WorkGroupSizeWithSharedElemCountType, local_size_y),
+            .size = sizeof(specConsts.local_size_y)
+        },
+        {
+            .constantID = 2,
+            .offset = (uint32_t)offsetof(struct WorkGroupSizeWithSharedElemCountType, local_size_z),
+            .size = sizeof(specConsts.local_size_z)
+        },
+        {
+            .constantID = 3,
+            .offset = (uint32_t)offsetof(struct WorkGroupSizeWithSharedElemCountType, sharedMemoryElemCount),
+            .size = sizeof(specConsts.sharedMemoryElemCount)
+        }
     };
     
     const VkSpecializationInfo specializationInfo = {
-        .mapEntryCount = 1,
-        .pMapEntries = &mapEntry,
-        .dataSize = mapEntry.size,
-        .pData = &sharedMemorySize
+        .mapEntryCount = (uint32_t)(sizeof(mapEntries) / sizeof(mapEntries[0])),
+        .pMapEntries = mapEntries,
+        .dataSize = sizeof(specConsts),
+        .pData = &specConsts
     };
 
     const VkPipelineShaderStageCreateInfo shaderStageCreateInfo = {
@@ -1365,11 +1395,13 @@ static VkResult CreateComputePipelineAdvanced(VkDevice device, VkShaderModule co
         .basePipelineIndex = 0
     };
     res = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, NULL, pComputePipeline);
-    if (res != VK_SUCCESS) {
+    if (res != VK_SUCCESS)
+    {
         printf("vkCreateComputePipelines failed: %d\n", res);
+        return 0;
     }
 
-    return res;
+    return specConsts.local_size_x;
 }
 
 static VkResult CreateComputePipelineTexturing(VkDevice device, VkShaderModule computeShaderModule, VkPipeline* pComputePipeline,
@@ -1912,8 +1944,8 @@ static void AdvancedComputeTest(void)
             break;
         }
 
-        result = CreateComputePipelineAdvanced(s_specDevice, computeShaderModule, elemCount, &computePipeline, &pipelineLayout, &descriptorSetLayout);
-        if (result != VK_SUCCESS)
+        const uint32_t workGroupSize = CreateComputePipelineAdvanced(s_specDevice, computeShaderModule, elemCount, &computePipeline, &pipelineLayout, &descriptorSetLayout);
+        if (workGroupSize == 0)
         {
             puts("CreateComputePipeline failed!");
             break;
@@ -1962,7 +1994,7 @@ static void AdvancedComputeTest(void)
 
         WriteBufferAndSync(commandBuffers[0], s_specQueueFamilyIndex, deviceBuffers[2], deviceBuffers[0], bufferSize);
 
-        vkCmdDispatch(commandBuffers[0], elemCount / 1024, 1, 1);
+        vkCmdDispatch(commandBuffers[0], elemCount / workGroupSize, 1, 1);
 
         SyncAndReadBuffer(commandBuffers[0], s_specQueueFamilyIndex, deviceBuffers[0], deviceBuffers[1], bufferSize);
 
