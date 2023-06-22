@@ -17,6 +17,10 @@
 #define FILE_BINARY_MODE
 #endif // _WIN32
 
+#ifndef max
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#endif // !max
+
 
 enum MY_CONSTANTS
 {
