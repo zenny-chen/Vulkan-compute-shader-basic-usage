@@ -659,7 +659,7 @@ static VkResult AllocateMemoryAndBuffers(VkDevice device, const VkPhysicalDevice
     vkGetBufferMemoryRequirements(device, deviceBuffers[1], &deviceMemBufRequirements);
 
     // two memory buffers share one device local memory.
-    const VkDeviceSize deviceMemTotalSize = bufferSize * 2;
+    const VkDeviceSize deviceMemTotalSize = max(bufferSize * 2, deviceMemBufRequirements.size);
     // Find device local property memory type index
     for (memoryTypeIndex = 0; memoryTypeIndex < pMemoryProperties->memoryTypeCount; memoryTypeIndex++)
     {
@@ -818,10 +818,6 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         return status;
     }
 
-    VkMemoryRequirements imageMemBufRequirements = { 0 };
-    vkGetImageMemoryRequirements(device, outImages[0], &imageMemBufRequirements);
-    const size_t totoalDeviceMemSize = imageBufferSize * 3;
-
     const VkImageCreateInfo imageCreateInfoStorage = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .pNext = NULL,
@@ -852,7 +848,7 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .pNext = NULL,
         .flags = 0,
-        .size = imageMemBufRequirements.size,
+        .size = imageBufferSize,
         .usage = VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .queueFamilyIndexCount = 1,
@@ -865,6 +861,10 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         printf("vkCreateBuffer failed: %d\n", res);
         return res;
     }
+
+    VkMemoryRequirements imageMemBufRequirements = { 0 };
+    vkGetImageMemoryRequirements(device, outImages[0], &imageMemBufRequirements);
+    const size_t totoalDeviceMemSize = max(imageBufferSize * 3, imageMemBufRequirements.size);
 
     // Find device local property memory type index
     for (memoryTypeIndex = 0; memoryTypeIndex < pMemoryProperties->memoryTypeCount; memoryTypeIndex++)
