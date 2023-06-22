@@ -659,7 +659,7 @@ static VkResult AllocateMemoryAndBuffers(VkDevice device, const VkPhysicalDevice
     vkGetBufferMemoryRequirements(device, deviceBuffers[1], &deviceMemBufRequirements);
 
     // two memory buffers share one device local memory.
-    const VkDeviceSize deviceMemTotalSize = deviceMemBufRequirements.size * 2;
+    const VkDeviceSize deviceMemTotalSize = bufferSize * 2;
     // Find device local property memory type index
     for (memoryTypeIndex = 0; memoryTypeIndex < pMemoryProperties->memoryTypeCount; memoryTypeIndex++)
     {
@@ -697,7 +697,7 @@ static VkResult AllocateMemoryAndBuffers(VkDevice device, const VkPhysicalDevice
         return res;
     }
 
-    res = vkBindBufferMemory(device, deviceBuffers[2], deviceMemories[1], deviceMemBufRequirements.size);
+    res = vkBindBufferMemory(device, deviceBuffers[2], deviceMemories[1], bufferSize);
     if (res != VK_SUCCESS)
     {
         printf("vkBindBufferMemory failed: %d\n", res);
@@ -730,7 +730,7 @@ static VkResult AllocateMemoryAndBuffers(VkDevice device, const VkPhysicalDevice
 static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const VkPhysicalDeviceMemoryProperties* pMemoryProperties, VkDeviceMemory deviceMemories[2],
     VkBuffer deviceBuffers[2], uint32_t width, uint32_t height, uint32_t queueFamilyIndex, VkImage outImages[2], VkBufferView outBufferViews[1], VkImageView outImageViews[2], VkSampler outSamplers[1])
 {
-    const size_t imageBufferSize = width * height * sizeof(uint32_t) * 4;   // each pixel element is a uvec4
+    const VkDeviceSize imageBufferSize = width * height * sizeof(uint32_t) * 4;   // each pixel element is a uvec4
 
     const VkBufferCreateInfo hostBufCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -820,7 +820,7 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
 
     VkMemoryRequirements imageMemBufRequirements = { 0 };
     vkGetImageMemoryRequirements(device, outImages[0], &imageMemBufRequirements);
-    const size_t totoalDeviceMemSize = imageMemBufRequirements.size * 3;
+    const size_t totoalDeviceMemSize = imageBufferSize * 3;
 
     const VkImageCreateInfo imageCreateInfoStorage = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -903,14 +903,14 @@ static VkResult AllocateMemoryAndCreateImageWithSampler(VkDevice device, const V
         return res;
     }
 
-    res = vkBindImageMemory(device, outImages[0], deviceMemories[1], imageMemBufRequirements.size);
+    res = vkBindImageMemory(device, outImages[0], deviceMemories[1], imageBufferSize);
     if (res != VK_SUCCESS)
     {
         printf("vkBindImageMemory failed: %d\n", res);
         return res;
     }
 
-    res = vkBindImageMemory(device, outImages[1], deviceMemories[1], imageMemBufRequirements.size * 2);
+    res = vkBindImageMemory(device, outImages[1], deviceMemories[1], imageBufferSize * 2);
     if (res != VK_SUCCESS)
     {
         printf("vkBindImageMemory failed: %d\n", res);
